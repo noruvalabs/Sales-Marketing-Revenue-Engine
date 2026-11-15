@@ -123,3 +123,4 @@ function fallbackQualify(company: CompanyData): QualificationResult {
     },
   };
 }
+
