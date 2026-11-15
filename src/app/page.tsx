@@ -25,16 +25,24 @@ import {
   Ban,
   Trash2,
   ExternalLink,
+  MessageSquare,
+  Flame,
+  CornerDownRight,
+  Copy,
 } from "lucide-react";
 
 export default function Dashboard() {
-  const [activeTab, setActiveTab] = useState<"overview" | "discovery" | "approvals" | "pipeline" | "suppression" | "revenue">("overview");
+  const [activeTab, setActiveTab] = useState<
+    "overview" | "discovery" | "approvals" | "conversations" | "pipeline" | "suppression" | "revenue"
+  >("overview");
   const [killSwitchActive, setKillSwitchActive] = useState(false);
   const [companies, setCompanies] = useState<any[]>([]);
   const [suppressionList, setSuppressionList] = useState<any[]>([]);
+  const [conversations, setConversations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [scoringLoading, setScoringLoading] = useState(false);
   const [sendingDraftId, setSendingDraftId] = useState<string | null>(null);
+  const [simulatingReply, setSimulatingReply] = useState(false);
   const [dispatchMessage, setDispatchMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
   // New Lead Form State
@@ -55,12 +63,21 @@ export default function Dashboard() {
     reason: "Competitor or manual opt-out",
   });
 
+  // Reply Simulator Form State
+  const [simulatorInput, setSimulatorInput] = useState({
+    selectedLeadId: "",
+    customReply: "Hi! This timing is perfect—we just hired 4 new reps and ramping them is brutal. Can we do a 15-minute call Thursday morning?",
+  });
+
   const fetchLeads = async () => {
     try {
       const res = await fetch("/api/leads");
       const data = await res.json();
       if (data.companies) {
         setCompanies(data.companies);
+        if (data.companies.length > 0 && !simulatorInput.selectedLeadId) {
+          setSimulatorInput((prev) => ({ ...prev, selectedLeadId: data.companies[0].id }));
+        }
       }
     } catch (err) {
       console.error("Failed to load leads", err);
@@ -81,9 +98,22 @@ export default function Dashboard() {
     }
   };
 
+  const fetchConversations = async () => {
+    try {
+      const res = await fetch("/api/inbound/reply");
+      const data = await res.json();
+      if (data.conversations) {
+        setConversations(data.conversations);
+      }
+    } catch (err) {
+      console.error("Failed to load conversations", err);
+    }
+  };
+
   useEffect(() => {
     fetchLeads();
     fetchSuppressionList();
+    fetchConversations();
   }, []);
 
   const handleAddLead = async (e: React.FormEvent) => {
@@ -198,6 +228,56 @@ export default function Dashboard() {
     }
   };
 
+  const handleSimulateReply = async (presetText?: string) => {
+    const textToSubmit = presetText || simulatorInput.customReply;
+    if (!textToSubmit) return;
+
+    const lead = companies.find((c) => c.id === simulatorInput.selectedLeadId) || companies[0];
+    const contact = lead?.contacts?.[0] || { firstName: "Prospect", lastName: "Lead", email: "prospect@example.com" };
+
+    setSimulatingReply(true);
+    try {
+      const res = await fetch("/api/inbound/reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: contact.email,
+          prospectName: `${contact.firstName} ${contact.lastName}`,
+          companyName: lead?.name || "Target Corp",
+          messageText: textToSubmit,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success && data.conversation) {
+        setConversations((prev) => [data.conversation, ...prev]);
+
+        // If interested, advance the deal stage on the UI
+        if (data.classification?.intent === "INTERESTED") {
+          setCompanies((prev) =>
+            prev.map((item) => {
+              if (item.id === lead?.id) {
+                return {
+                  ...item,
+                  deal: { ...item.deal, stage: "MEETING_BOOKED" },
+                };
+              }
+              return item;
+            })
+          );
+          setDispatchMessage({
+            text: `🔥 High-Intent Lead Detected! Deal promoted to "Meeting Booked" and Slack notification triggered.`,
+            type: "success",
+          });
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSimulatingReply(false);
+    }
+  };
+
   const handleAddSuppression = async (e: React.FormEvent) => {
     e.preventDefault();
     const val = suppressionInput.emailOrDomain.trim();
@@ -258,7 +338,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Global Safety Controls & Kill Switch */}
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-300">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
@@ -289,6 +368,12 @@ export default function Dashboard() {
             label: "Human Review Cockpit",
             icon: FileText,
             badge: pendingDrafts.length > 0 ? pendingDrafts.length : undefined,
+          },
+          {
+            id: "conversations",
+            label: "Conversations & Inbound",
+            icon: MessageSquare,
+            badge: conversations.length > 0 ? conversations.length : undefined,
           },
           { id: "pipeline", label: "CRM Deal Pipeline", icon: Layers },
           {
@@ -323,7 +408,7 @@ export default function Dashboard() {
         })}
       </div>
 
-      {/* Dispatch Status Banner */}
+      {/* Dispatch / Notification Banner */}
       {dispatchMessage && (
         <div
           className={`px-6 py-2.5 text-xs font-medium flex items-center justify-between border-b ${
@@ -375,11 +460,11 @@ export default function Dashboard() {
 
               <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-5 shadow-sm">
                 <div className="flex items-center justify-between text-slate-400 text-xs font-medium mb-2">
-                  <span>EMAILS DISPATCHED</span>
-                  <Send className="w-4 h-4 text-sky-400" />
+                  <span>INBOUND CONVERSATIONS</span>
+                  <MessageSquare className="w-4 h-4 text-emerald-400" />
                 </div>
-                <div className="text-2xl font-bold text-sky-400">{sentDrafts.length}</div>
-                <div className="text-[11px] text-slate-400 mt-1">{approvedDrafts.length} approved & ready</div>
+                <div className="text-2xl font-bold text-emerald-400">{conversations.length}</div>
+                <div className="text-[11px] text-slate-400 mt-1">AI Classified & Slack Alerted</div>
               </div>
 
               <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-5 shadow-sm">
@@ -404,7 +489,7 @@ export default function Dashboard() {
                   { step: "2. Qualify", desc: "0-100 ICP Scoring", status: "Active" },
                   { step: "3. Review", desc: "Human Sign-off", status: "Active" },
                   { step: "4. Dispatch", desc: "Safe Email Delivery", status: "Active" },
-                  { step: "5. Convert", desc: "Meeting & Demo", status: "Sprint 3" },
+                  { step: "5. Reply AI", desc: "Intent & Slack Alert", status: "Active" },
                   { step: "6. Retain", desc: "Stripe Subscriptions", status: "Sprint 4" },
                 ].map((item, i) => (
                   <div key={i} className="p-3 rounded-lg bg-slate-900/60 border border-slate-800">
@@ -733,7 +818,6 @@ export default function Dashboard() {
                           </div>
                         </div>
 
-                        {/* Action buttons based on status */}
                         <div className="pt-2 border-t border-slate-800">
                           {status === "PENDING_APPROVAL" && (
                             <div className="flex items-center space-x-2">
@@ -798,7 +882,208 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* TAB 4: CRM DEAL PIPELINE */}
+        {/* TAB 4: CONVERSATIONS & INBOUND INTELLIGENCE */}
+        {activeTab === "conversations" && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left Column: Interactive Inbound Reply Simulator */}
+            <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-6 lg:col-span-1 space-y-4">
+              <div className="flex items-center space-x-2 text-white font-semibold text-sm">
+                <Flame className="w-4 h-4 text-amber-400" />
+                <span>Simulate Prospect Reply</span>
+              </div>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Test how the Conversation Agent reads incoming replies, categorizes buying intent, notifies Slack, and drafts responses.
+              </p>
+
+              <div className="space-y-3 text-xs">
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">Target Prospect</label>
+                  <select
+                    value={simulatorInput.selectedLeadId}
+                    onChange={(e) => setSimulatorInput({ ...simulatorInput, selectedLeadId: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-[#34d399]"
+                  >
+                    {companies.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} — {c.contacts?.[0]?.firstName} ({c.contacts?.[0]?.email})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">Quick Presets</label>
+                  <div className="flex flex-col space-y-1.5">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleSimulateReply(
+                          "Hi! This timing is perfect—we just hired 4 new reps and ramping them is brutal. Can we do a 15-minute call Thursday morning?"
+                        )
+                      }
+                      className="text-left px-2.5 py-1.5 rounded bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-emerald-500/20 transition-colors"
+                    >
+                      🔥 Preset: "Interested / Book 15-min call"
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleSimulateReply(
+                          "We already use Gong and Otter.ai across the team, how are you different and why switch?"
+                        )
+                      }
+                      className="text-left px-2.5 py-1.5 rounded bg-slate-900 hover:bg-slate-800 text-sky-400 border border-sky-500/20 transition-colors"
+                    >
+                      💡 Preset: "Competitor objection (Gong / Otter)"
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleSimulateReply(
+                          "Please unsubscribe me and remove our company from your contact list immediately."
+                        )
+                      }
+                      className="text-left px-2.5 py-1.5 rounded bg-slate-900 hover:bg-slate-800 text-rose-400 border border-rose-500/20 transition-colors"
+                    >
+                      🛑 Preset: "Unsubscribe / Opt out"
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">Custom Reply Text</label>
+                  <textarea
+                    rows={4}
+                    value={simulatorInput.customReply}
+                    onChange={(e) => setSimulatorInput({ ...simulatorInput, customReply: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-[#34d399]"
+                    placeholder="Type what the prospect wrote..."
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  disabled={simulatingReply}
+                  onClick={() => handleSimulateReply()}
+                  className="w-full bg-[#34d399] hover:bg-[#2fc28c] text-slate-950 font-bold py-2.5 rounded-lg flex items-center justify-center space-x-2 transition-all shadow-md shadow-[#34d399]/20"
+                >
+                  {simulatingReply ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Classifying Reply & Alerting Slack...</span>
+                    </>
+                  ) : (
+                    <>
+                      <MessageSquare className="w-4 h-4" />
+                      <span>Simulate Inbound Ingestion</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Right Column: Active Inbound Conversations Feed */}
+            <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-6 lg:col-span-2 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-white">Conversation Inbox & Intelligence Feed</h3>
+                  <p className="text-xs text-slate-400">Classified replies with sentiment and recommended responses</p>
+                </div>
+                <span className="text-xs bg-slate-800 text-slate-300 px-2.5 py-1 rounded-full">
+                  {conversations.length} incoming messages
+                </span>
+              </div>
+
+              <div className="space-y-4">
+                {conversations.map((conv) => {
+                  const isHot = conv.intent === "INTERESTED";
+                  const isObjection = conv.intent === "OBJECTION";
+                  const isUnsub = conv.intent === "UNSUBSCRIBE";
+
+                  return (
+                    <div
+                      key={conv.id}
+                      className={`p-4 rounded-xl bg-slate-900/80 border space-y-3 transition-all ${
+                        isHot
+                          ? "border-emerald-500/40 shadow-lg shadow-emerald-500/5"
+                          : isObjection
+                          ? "border-amber-500/30"
+                          : isUnsub
+                          ? "border-rose-500/30"
+                          : "border-slate-800"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <span className="font-bold text-white text-sm">{conv.companyName}</span>
+                            <span className="text-slate-400 text-xs">({conv.prospectName})</span>
+                            <span className="text-slate-500 text-[11px] font-mono">&lt;{conv.email}&gt;</span>
+                          </div>
+                          <div className="text-[11px] text-slate-500 mt-0.5">
+                            Received: {new Date(conv.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center space-x-2">
+                          {conv.slackAlerted && (
+                            <span className="text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20 flex items-center space-x-1">
+                              <Flame className="w-3 h-3" />
+                              <span>Slack Alerted</span>
+                            </span>
+                          )}
+                          <span
+                            className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
+                              isHot
+                                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
+                                : isObjection
+                                ? "bg-amber-500/10 text-amber-400 border border-amber-500/30"
+                                : isUnsub
+                                ? "bg-rose-500/10 text-rose-400 border border-rose-500/30"
+                                : "bg-slate-800 text-slate-400"
+                            }`}
+                          >
+                            {conv.intent} ({conv.confidence}%)
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Message Quote */}
+                      <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 text-xs text-slate-200 italic">
+                        "{conv.messageText}"
+                      </div>
+
+                      {/* AI Action Plan */}
+                      <div className="text-[11px] text-slate-300 space-y-1">
+                        <div>
+                          <span className="text-sky-400 font-semibold">Recommended Action:</span>{" "}
+                          {conv.recommendedAction}
+                        </div>
+                      </div>
+
+                      {/* AI Suggested Reply */}
+                      {conv.suggestedReply && (
+                        <div className="p-3 rounded-lg bg-[#07111f] border border-slate-800/80 space-y-1.5">
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-[#34d399] font-semibold flex items-center space-x-1">
+                              <CornerDownRight className="w-3.5 h-3.5" />
+                              <span>AI Suggested Reply (Ready to Send):</span>
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-300 whitespace-pre-line leading-relaxed font-sans">
+                            {conv.suggestedReply}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 5: CRM DEAL PIPELINE */}
         {activeTab === "pipeline" && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -850,7 +1135,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* TAB 5: SUPPRESSION & COMPLIANCE */}
+        {/* TAB 6: SUPPRESSION & COMPLIANCE */}
         {activeTab === "suppression" && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-6 lg:col-span-1 space-y-4">
@@ -898,6 +1183,7 @@ export default function Dashboard() {
               <div className="p-3 bg-slate-900/60 border border-slate-800 rounded-lg text-[11px] text-slate-400 space-y-1">
                 <div className="font-semibold text-slate-300">Automatic Protections:</div>
                 <div>• All 1-click unsubscribe links feed directly into this table.</div>
+                <div>• Inbound "unsubscribe" replies auto-suppress the sender.</div>
                 <div>• Dispatcher auto-aborts if recipient or domain matches.</div>
               </div>
             </div>
@@ -937,7 +1223,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* TAB 6: REVENUE & ATTRIBUTION */}
+        {/* TAB 7: REVENUE & ATTRIBUTION */}
         {activeTab === "revenue" && (
           <div className="space-y-6">
             <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-6 space-y-4">
