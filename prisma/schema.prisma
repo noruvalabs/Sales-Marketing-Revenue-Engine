@@ -1,0 +1,179 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum NoruvaPillar {
+  INTERVIEW_COPILOT
+  CLIENT_MEETINGS
+  CUSTOMER_SUPPORT
+  BILINGUAL_AI
+}
+
+enum CompanyStatus {
+  DISCOVERED
+  QUALIFIED
+  DISQUALIFIED
+  IN_OUTREACH
+  CONVERTED
+}
+
+enum ContactStatus {
+  NEW
+  QUALIFIED
+  DRAFT_PENDING_APPROVAL
+  OUTREACH_ACTIVE
+  REPLIED_INTERESTED
+  REPLIED_OBJECTION
+  OPTED_OUT
+}
+
+enum DraftStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  SENT
+  FAILED
+}
+
+enum Sentiment {
+  INTERESTED
+  OBJECTION
+  NOT_NOW
+  UNSUBSCRIBE
+  NEUTRAL
+}
+
+enum DealStage {
+  QUALIFIED_LEAD
+  CONTACTED
+  MEETING_BOOKED
+  DEMO_COMPLETED
+  TRIAL_ACTIVE
+  PROPOSAL_SENT
+  WON_PAID
+  LOST
+}
+
+model Company {
+  id                 String          @id @default(uuid())
+  name               String
+  domain             String          @unique
+  website            String?
+  industry           String?
+  size               String?         // e.g. "10-50", "50-200"
+  country            String?         @default("Global")
+  techStack          String[]
+  hiringSignals      String?         // e.g. "Hiring 5 remote sales reps"
+  
+  // Intelligence & ICP Qualification
+  icpScore           Int             @default(0)
+  icpScoreReason     String?         @db.Text
+  recommendedPillar  NoruvaPillar    @default(CLIENT_MEETINGS)
+  status             CompanyStatus   @default(DISCOVERED)
+  
+  // Relations
+  contacts           Contact[]
+  deals              Deal[]
+  scoreLogs          LeadScoreLog[]
+  
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+}
+
+model Contact {
+  id             String          @id @default(uuid())
+  companyId      String
+  company        Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  firstName      String
+  lastName       String
+  email          String          @unique
+  title          String          // e.g. "Head of Talent", "VP Sales", "CEO"
+  linkedinUrl    String?
+  status         ContactStatus   @default(NEW)
+  
+  // Relations
+  outreachDrafts OutreachDraft[]
+  conversations  Conversation[]
+  
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+model LeadScoreLog {
+  id                 String       @id @default(uuid())
+  companyId          String
+  company            Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  score              Int
+  painPointAnalysis  String       @db.Text
+  fitVerdict         String       @db.Text
+  modelUsed          String       @default("gemini-1.5-flash")
+  createdAt          DateTime     @default(now())
+}
+
+model OutreachDraft {
+  id             String       @id @default(uuid())
+  contactId      String
+  contact        Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  
+  stepNumber     Int          @default(1)
+  subject        String
+  body           String       @db.Text
+  status         DraftStatus  @default(PENDING_APPROVAL)
+  
+  approvedAt     DateTime?
+  approvedBy     String?
+  sentAt         DateTime?
+  errorMessage   String?
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Conversation {
+  id             String       @id @default(uuid())
+  contactId      String
+  contact        Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  
+  direction      String       @default("INBOUND") // INBOUND or OUTBOUND
+  sentiment      Sentiment    @default(NEUTRAL)
+  rawText        String       @db.Text
+  
+  createdAt      DateTime     @default(now())
+}
+
+model Deal {
+  id             String       @id @default(uuid())
+  companyId      String
+  company        Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  stage          DealStage    @default(QUALIFIED_LEAD)
+  valueMrr       Decimal      @default(0) @db.Decimal(10, 2)
+  notes          String?      @db.Text
+  stripeCustomerId String?
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model SuppressionList {
+  id             String       @id @default(uuid())
+  email          String?      @unique
+  domain         String?
+  reason         String       @default("Unsubscribed")
+  createdAt      DateTime     @default(now())
+}
+
+model AuditLog {
+  id             String       @id @default(uuid())
+  action         String
+  entityType     String
+  entityId       String
+  details        Json?
+  createdAt      DateTime     @default(now())
+}
