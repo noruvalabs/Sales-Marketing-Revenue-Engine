@@ -54,3 +54,47 @@ The **Noruva Revenue Engine** is designed to generate profitable, predictable re
 - **Strict Suppression:** One-click opt-out and automatic cancellation of scheduled follow-ups upon unsubscribe or negative reply.
 - **Volume Limits:** Capped at 30–40 emails/day per domain with randomized jitter delays to maintain pristine domain reputation.
 - **Kill-Switch:** Instant emergency halt via dashboard toggle or `OUTREACH_KILL_SWITCH=true`.
+
+---
+
+## Git Workflow & Branching Guidelines
+
+> [!IMPORTANT]
+> **`develop` is our primary active development branch.**
+> All team members must pull from `develop` before starting any new work, and merge/push finished feature branches into `develop`.
+
+### Team Workflow Rules:
+
+1. **Always pull the latest `develop` before starting work:**
+   ```bash
+   git checkout develop
+   git pull origin develop
+   ```
+
+2. **Create a dedicated feature or bugfix branch:**
+   ```bash
+   git checkout -b feature/your-feature-name
+   # or
+   git checkout -b fix/your-bugfix-name
+   ```
+
+3. **Commit your changes:**
+   ```bash
+   git add .
+   git commit -m "feat: description of work done"
+   ```
+
+4. **Integrate with `develop` when finished:**
+   ```bash
+   # Update your local develop branch
+   git checkout develop
+   git pull origin develop
+
+   # Merge your feature branch into develop
+   git merge feature/your-feature-name
+
+   # Push to remote develop
+   git push origin develop
+   ```
+   *(Or push your feature branch and open a Pull Request targeting `develop`).*
+
