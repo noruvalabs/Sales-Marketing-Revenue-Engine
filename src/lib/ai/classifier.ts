@@ -146,3 +146,4 @@ function fallbackClassifier(prospectName: string, text: string): ClassificationR
     suggestedReply: `Hi ${firstName},\n\nThanks for your note! Could you share a bit more about what you have in mind?\n\nBest,\nNoruva Team`,
   };
 }
+

@@ -81,3 +81,4 @@ export async function sendSlackHighIntentAlert(payload: SlackNotificationPayload
   console.log(`[SLACK ALERT SIMULATED] Hot lead: ${payload.prospectName} (${payload.companyName}) replied!`);
   return { success: true, simulated: true };
 }
+
