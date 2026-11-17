@@ -8,7 +8,8 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const { action, enabled, minScoreToAutoDispatch } = await req.json();
+    const body = await req.json();
+    const { action, enabled, minScoreToAutoDispatch, maxDailyAutoSends, activeSources, connectionChannel, targetPillars } = body;
 
     if (action === "TOGGLE") {
       const updated = updateAutopilotConfig({ enabled: Boolean(enabled) });
@@ -16,14 +17,23 @@ export async function POST(req: Request) {
     }
 
     if (action === "UPDATE_SETTINGS") {
-      const updated = updateAutopilotConfig({
-        minScoreToAutoDispatch: Number(minScoreToAutoDispatch) || 85,
-      });
+      const updates: any = {};
+      if (minScoreToAutoDispatch !== undefined) updates.minScoreToAutoDispatch = Number(minScoreToAutoDispatch);
+      if (maxDailyAutoSends !== undefined) updates.maxDailyAutoSends = Number(maxDailyAutoSends);
+      if (activeSources !== undefined) updates.activeSources = activeSources;
+      if (connectionChannel !== undefined) updates.connectionChannel = connectionChannel;
+      if (targetPillars !== undefined) updates.targetPillars = targetPillars;
+
+      const updated = updateAutopilotConfig(updates);
       return NextResponse.json({ success: true, config: updated });
     }
 
     if (action === "TRIGGER_CYCLE") {
-      const cycleResult = await runAutopilotCycle();
+      const cycleResult = await runAutopilotCycle({
+        pillar: body.pillar,
+        sources: body.sources,
+        count: body.count,
+      });
       const state = getAutopilotState();
       return NextResponse.json({
         success: true,

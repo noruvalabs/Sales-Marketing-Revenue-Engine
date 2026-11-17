@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
-import { discoverLeadsAutomatically } from "@/lib/discovery/finder";
+import { huntMultiSourceLeads, LeadSource } from "@/lib/discovery/multiSourceHunter";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(req: Request) {
   try {
-    const { personaKeyword, pillar, count = 3 } = await req.json();
+    const { personaKeyword, pillar, sources, count = 4 } = await req.json();
 
-    const discovered = await discoverLeadsAutomatically({
-      personaKeyword: personaKeyword || "B2B SaaS companies hiring remote SDRs and sales reps",
+    const discovered = await huntMultiSourceLeads({
+      personaKeyword: personaKeyword || "B2B SaaS companies hiring remote SDRs and technical interviewers",
       pillar: pillar || "CLIENT_MEETINGS",
-      count: Number(count) || 3,
+      sources: sources && sources.length > 0 ? (sources as LeadSource[]) : undefined,
+      count: Number(count) || 4,
     });
 
     const insertedLeads = [];
@@ -23,6 +24,12 @@ export async function POST(req: Request) {
         size: lead.size,
         country: lead.country,
         hiringSignals: lead.hiringSignals,
+        source: lead.source,
+        sourceUrl: lead.sourceUrl,
+        linkedinUrl: lead.linkedinUrl,
+        facebookUrl: lead.facebookUrl,
+        twitterUrl: lead.twitterUrl,
+        socialConnectNote: lead.socialConnectNote,
         icpScore: lead.qualification.score,
         icpScoreReason: lead.qualification.reason,
         recommendedPillar: lead.qualification.recommendedPillar,
@@ -49,13 +56,14 @@ export async function POST(req: Request) {
         },
       };
 
+      // Upsert to DB if PostgreSQL is reachable
       try {
         await prisma.company.upsert({
           where: { domain: companyRecord.domain },
           update: {
             icpScore: companyRecord.icpScore,
             icpScoreReason: companyRecord.icpScoreReason,
-            hiringSignals: companyRecord.hiringSignals,
+            status: companyRecord.status as any,
           },
           create: {
             name: companyRecord.name,
@@ -71,7 +79,7 @@ export async function POST(req: Request) {
           },
         });
       } catch (err) {
-        // Fallback to memory
+        // Fallback gracefully to memory
       }
 
       insertedLeads.push(companyRecord);
@@ -82,8 +90,10 @@ export async function POST(req: Request) {
       count: insertedLeads.length,
       leads: insertedLeads,
     });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || "Discovery search failed" }, { status: 500 });
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: error.message || "Failed to execute multi-source lead hunt" },
+      { status: 500 }
+    );
   }
 }
-

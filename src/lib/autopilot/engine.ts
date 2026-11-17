@@ -1,5 +1,5 @@
-import { discoverLeadsAutomatically } from "@/lib/discovery/finder";
-import { sendOutreachEmail } from "@/lib/email/dispatcher";
+import { huntMultiSourceLeads, HunterLeadProfile, LeadSource } from "@/lib/discovery/multiSourceHunter";
+import { connectLeadAutonomously, ConnectionChannel } from "@/lib/connectors/channelConnector";
 import { prisma } from "@/lib/prisma";
 
 export interface AutopilotLogEntry {
@@ -8,6 +8,7 @@ export interface AutopilotLogEntry {
   summary: string;
   discoveredCount: number;
   autoDispatchedCount: number;
+  sourcesUsed: string[];
   companies: string[];
 }
 
@@ -16,6 +17,8 @@ export interface AutopilotConfig {
   minScoreToAutoDispatch: number; // default 85
   maxDailyAutoSends: number; // default 30
   targetPillars: Array<"CLIENT_MEETINGS" | "INTERVIEW_COPILOT" | "CUSTOMER_SUPPORT" | "BILINGUAL_AI">;
+  activeSources: LeadSource[];
+  connectionChannel: ConnectionChannel;
   lastRunAt: string | null;
   nextRunScheduledAt: string | null;
 }
@@ -24,19 +27,22 @@ let autopilotConfig: AutopilotConfig = {
   enabled: true, // Default to true for solo founder
   minScoreToAutoDispatch: 85,
   maxDailyAutoSends: 30,
-  targetPillars: ["CLIENT_MEETINGS", "INTERVIEW_COPILOT"],
-  lastRunAt: new Date(Date.now() - 3600000 * 3).toISOString(),
-  nextRunScheduledAt: new Date(Date.now() + 3600000 * 5).toISOString(),
+  targetPillars: ["CLIENT_MEETINGS", "INTERVIEW_COPILOT", "CUSTOMER_SUPPORT", "BILINGUAL_AI"],
+  activeSources: ["GOOGLE_SEARCH", "APOLLO", "LINKEDIN", "FACEBOOK"],
+  connectionChannel: "OMNICHANNEL",
+  lastRunAt: new Date(Date.now() - 3600000 * 2).toISOString(),
+  nextRunScheduledAt: new Date(Date.now() + 3600000 * 4).toISOString(),
 };
 
 let autopilotLogs: AutopilotLogEntry[] = [
   {
     id: "log-1",
-    timestamp: new Date(Date.now() - 3600000 * 3).toISOString(),
-    summary: "Autopilot discovered 3 high-fit accounts. 2 scored ≥ 85 and were automatically dispatched to inboxes.",
-    discoveredCount: 3,
-    autoDispatchedCount: 2,
-    companies: ["Ramp Financial (Score 94)", "BairesDev (Score 92)"],
+    timestamp: new Date(Date.now() - 3600000 * 2).toISOString(),
+    summary: "Autopilot discovered 4 high-fit accounts from Google Search & Apollo. 3 scored ≥ 85 and were auto-connected via Omni-Channel (Email + LinkedIn).",
+    discoveredCount: 4,
+    autoDispatchedCount: 3,
+    sourcesUsed: ["APOLLO", "GOOGLE_SEARCH", "LINKEDIN"],
+    companies: ["Ramp Financial (Score 94)", "BairesDev (Score 92)", "Front App (Score 89)"],
   },
 ];
 
@@ -52,7 +58,11 @@ export function updateAutopilotConfig(updates: Partial<AutopilotConfig>) {
   return autopilotConfig;
 }
 
-export async function runAutopilotCycle(): Promise<{
+export async function runAutopilotCycle(customParams?: {
+  pillar?: "CLIENT_MEETINGS" | "INTERVIEW_COPILOT" | "CUSTOMER_SUPPORT" | "BILINGUAL_AI";
+  sources?: LeadSource[];
+  count?: number;
+}): Promise<{
   success: boolean;
   summary: string;
   discovered: number;
@@ -73,16 +83,20 @@ export async function runAutopilotCycle(): Promise<{
     };
   }
 
-  // 2. Select a target pillar for this cycle
+  // 2. Select target pillar & sources for this autonomous cycle
   const pillarToRun =
+    customParams?.pillar ||
     autopilotConfig.targetPillars[Math.floor(Math.random() * autopilotConfig.targetPillars.length)] ||
     "CLIENT_MEETINGS";
 
-  // 3. Autonomous Lead Discovery
-  const discovered = await discoverLeadsAutomatically({
-    personaKeyword: "High-growth tech companies hiring remote sales reps and technical interviewers",
+  const sourcesToHunt = customParams?.sources || autopilotConfig.activeSources;
+
+  // 3. Autonomous Multi-Source Lead Hunting (Google, Apollo, LinkedIn, Facebook)
+  const discovered: HunterLeadProfile[] = await huntMultiSourceLeads({
+    personaKeyword: "High-growth tech companies hiring remote sales reps, technical interviewers, and multilingual support",
     pillar: pillarToRun,
-    count: 3,
+    sources: sourcesToHunt,
+    count: customParams?.count || 4,
   });
 
   const processedLeads: any[] = [];
@@ -101,10 +115,16 @@ export async function runAutopilotCycle(): Promise<{
       size: item.size,
       country: item.country,
       hiringSignals: item.hiringSignals,
+      source: item.source,
+      sourceUrl: item.sourceUrl,
+      linkedinUrl: item.linkedinUrl,
+      facebookUrl: item.facebookUrl,
+      twitterUrl: item.twitterUrl,
       icpScore: score,
       icpScoreReason: item.qualification.reason,
       recommendedPillar: item.qualification.recommendedPillar,
       status: score >= 70 ? "QUALIFIED" : "DISQUALIFIED",
+      socialConnectNote: item.socialConnectNote,
       contacts: [
         {
           id: `c-${Date.now()}-${Math.random().toString(36).substring(7)}`,
@@ -128,22 +148,15 @@ export async function runAutopilotCycle(): Promise<{
       },
     };
 
-    // 4. Autonomous Dispatch (Zero Human Command Required)
+    // 4. Autonomous Omni-Channel Connection (Zero Human Command Required)
     if (isUltraHighFit) {
-      await sendOutreachEmail({
-        toEmail: item.contactEmail,
-        toName: item.contactName,
-        companyName: item.name,
-        subject: item.qualification.emailDraft.subject,
-        body: item.qualification.emailDraft.body,
-        draftId: companyRecord.draft.id,
-      });
+      await connectLeadAutonomously(item, autopilotConfig.connectionChannel);
 
       autoDispatchedCount++;
-      autoDispatchedCompanies.push(`${item.name} (Score ${score})`);
+      autoDispatchedCompanies.push(`${item.name} (${item.source} - Score ${score})`);
     }
 
-    // Persist to DB if possible
+    // Persist to DB if available
     try {
       await prisma.company.upsert({
         where: { domain: companyRecord.domain },
@@ -177,7 +190,8 @@ export async function runAutopilotCycle(): Promise<{
   autopilotConfig.lastRunAt = now.toISOString();
   autopilotConfig.nextRunScheduledAt = new Date(now.getTime() + 3600000 * 6).toISOString();
 
-  const cycleSummary = `Autonomous Cycle Complete: Discovered ${discovered.length} accounts. ${autoDispatchedCount} scored ≥ ${autopilotConfig.minScoreToAutoDispatch} and were auto-dispatched.`;
+  const sourcesList = Array.from(new Set(discovered.map((d) => d.source)));
+  const cycleSummary = `Autonomous Cycle Complete: Hunted ${discovered.length} accounts via [${sourcesList.join(", ")}]. ${autoDispatchedCount} scored ≥ ${autopilotConfig.minScoreToAutoDispatch} and were auto-connected via ${autopilotConfig.connectionChannel}.`;
 
   const newLog: AutopilotLogEntry = {
     id: `log-${Date.now()}`,
@@ -185,6 +199,7 @@ export async function runAutopilotCycle(): Promise<{
     summary: cycleSummary,
     discoveredCount: discovered.length,
     autoDispatchedCount,
+    sourcesUsed: sourcesList,
     companies: autoDispatchedCompanies,
   };
 

@@ -39,6 +39,10 @@ import {
   Play,
   Sliders,
   Radio,
+  Globe,
+  Share2,
+  Link2,
+  Terminal,
 } from "lucide-react";
 
 export default function Dashboard() {
@@ -108,11 +112,12 @@ export default function Dashboard() {
     contactTitle: "VP of Sales",
   });
 
-  // Automated Discovery State
+  // Automated Multi-Source Discovery State
   const [autoSearchInput, setAutoSearchInput] = useState({
     personaKeyword: "B2B SaaS companies expanding remote sales teams and SDRs",
     pillar: "CLIENT_MEETINGS" as "CLIENT_MEETINGS" | "INTERVIEW_COPILOT" | "CUSTOMER_SUPPORT" | "BILINGUAL_AI",
-    count: 3,
+    sources: ["GOOGLE_SEARCH", "APOLLO", "LINKEDIN", "FACEBOOK"],
+    count: 4,
   });
 
   // Bulk CSV State
@@ -791,6 +796,73 @@ Ramp Card,ramp.com,"Hiring 10 Account Executives",Colin Kennedy,colin@ramp.com,C
                   <div className="text-[11px] text-slate-400 mt-0.5">Alerted on Slack & Calendar</div>
                 </div>
               </div>
+
+              {/* Multi-Source Radar & Channels */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-white flex items-center space-x-2">
+                      <Globe className="w-4 h-4 text-sky-400" />
+                      <span>Multi-Source Lead Radar</span>
+                    </span>
+                    <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded font-mono">
+                      4 Channels Active
+                    </span>
+                  </div>
+                  <div className="space-y-2 text-xs">
+                    <div className="flex items-center justify-between text-slate-300">
+                      <span className="flex items-center space-x-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                        <span>Google Search SERP Dorking</span>
+                      </span>
+                      <span className="text-[11px] text-slate-400">Hiring signals scanner</span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-300">
+                      <span className="flex items-center space-x-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                        <span>Apollo.io B2B Directory</span>
+                      </span>
+                      <span className="text-[11px] text-slate-400">Decision makers & emails</span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-300">
+                      <span className="flex items-center space-x-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                        <span>LinkedIn Executive Radar</span>
+                      </span>
+                      <span className="text-[11px] text-slate-400">Job change & headcount</span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-300">
+                      <span className="flex items-center space-x-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                        <span>Facebook Business & Web Scraper</span>
+                      </span>
+                      <span className="text-[11px] text-slate-400">Target company profiles</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-white flex items-center space-x-2">
+                      <Terminal className="w-4 h-4 text-emerald-400" />
+                      <span>Zero-Human Autonomous Cron Endpoint</span>
+                    </span>
+                    <span className="text-[10px] bg-sky-500/10 text-sky-400 px-2 py-0.5 rounded font-mono">
+                      Ready for Webhook
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Trigger full autonomous cycles without touching the keyboard. Add this URL to GitHub Actions, Vercel Cron, or cron-job.org:
+                  </p>
+                  <div className="p-2 rounded bg-slate-950 border border-slate-800 text-[11px] font-mono text-emerald-400 select-all overflow-x-auto">
+                    POST /api/autopilot/cron
+                  </div>
+                  <div className="text-[10px] text-slate-500 flex items-center justify-between">
+                    <span>Runs discovery, scoring, and auto-dispatch</span>
+                    <span>100% Autonomous</span>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Live Autopilot Activity & Execution Logs */}
@@ -1051,6 +1123,40 @@ Ramp Card,ramp.com,"Hiring 10 Account Executives",Colin Kennedy,colin@ramp.com,C
                     </div>
 
                     <div>
+                      <label className="block text-slate-300 font-medium mb-1.5">Lead Sources & Channels</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          { id: "GOOGLE_SEARCH", label: "Google Search", icon: Globe },
+                          { id: "APOLLO", label: "Apollo.io API", icon: Zap },
+                          { id: "LINKEDIN", label: "LinkedIn Radar", icon: Share2 },
+                          { id: "FACEBOOK", label: "Facebook / Web", icon: Users },
+                        ].map((src) => {
+                          const isSelected = autoSearchInput.sources.includes(src.id);
+                          return (
+                            <button
+                              key={src.id}
+                              type="button"
+                              onClick={() => {
+                                const next = isSelected
+                                  ? autoSearchInput.sources.filter((s) => s !== src.id)
+                                  : [...autoSearchInput.sources, src.id];
+                                setAutoSearchInput({ ...autoSearchInput, sources: next });
+                              }}
+                              className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] transition-colors ${
+                                isSelected
+                                  ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-400 font-medium"
+                                  : "bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200"
+                              }`}
+                            >
+                              <src.icon className="w-3.5 h-3.5" />
+                              <span>{src.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div>
                       <label className="block text-slate-300 font-medium mb-1">Target Persona & Hiring Signal</label>
                       <input
                         type="text"
@@ -1259,18 +1365,44 @@ Ramp Card,ramp.com,"Hiring 10 Account Executives",Colin Kennedy,colin@ramp.com,C
                     <div key={c.id} className="p-4 rounded-xl bg-slate-900/70 border border-slate-800/80 space-y-2">
                       <div className="flex items-start justify-between">
                         <div>
-                          <div className="flex items-center space-x-2">
+                          <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                             <span className="font-bold text-white text-sm">{c.name}</span>
                             <span className="text-slate-500 text-xs font-mono">({c.domain})</span>
                             <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20">
                               {c.recommendedPillar?.replace("_", " ")}
                             </span>
+                            {c.source && (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                {c.source === "GOOGLE_SEARCH"
+                                  ? "🌐 Google Search"
+                                  : c.source === "APOLLO"
+                                  ? "⚡ Apollo.io"
+                                  : c.source === "LINKEDIN"
+                                  ? "💼 LinkedIn Radar"
+                                  : c.source === "FACEBOOK"
+                                  ? "👥 Facebook Page"
+                                  : c.source}
+                              </span>
+                            )}
                           </div>
-                          <p className="text-xs text-slate-400 mt-1">
-                            <span className="text-slate-500">Contact:</span>{" "}
-                            {c.contacts?.[0]?.firstName} {c.contacts?.[0]?.lastName} — {c.contacts?.[0]?.title} (
-                            {c.contacts?.[0]?.email})
-                          </p>
+                          <div className="flex items-center space-x-3 text-xs text-slate-400 mt-1 flex-wrap">
+                            <span>
+                              <span className="text-slate-500">Contact:</span>{" "}
+                              {c.contacts?.[0]?.firstName} {c.contacts?.[0]?.lastName} — {c.contacts?.[0]?.title} (
+                              {c.contacts?.[0]?.email})
+                            </span>
+                            {c.linkedinUrl && (
+                              <a
+                                href={c.linkedinUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-sky-400 hover:underline text-[11px] flex items-center space-x-1"
+                              >
+                                <Share2 className="w-3 h-3" />
+                                <span>LinkedIn Profile</span>
+                              </a>
+                            )}
+                          </div>
                           <div className="text-[11px] text-slate-500 mt-0.5 truncate max-w-md">
                             Signal: {c.hiringSignals}
                           </div>
@@ -1291,6 +1423,13 @@ Ramp Card,ramp.com,"Hiring 10 Account Executives",Colin Kennedy,colin@ramp.com,C
                         <span className="text-[#34d399] font-semibold">AI Qualification Reasoning:</span>{" "}
                         {c.icpScoreReason}
                       </div>
+
+                      {c.socialConnectNote && (
+                        <div className="p-2 rounded-lg bg-sky-950/30 border border-sky-800/30 text-[11px] text-sky-200">
+                          <span className="text-sky-400 font-semibold">LinkedIn Auto-Connect Note (&lt;300 chars):</span>{" "}
+                          &ldquo;{c.socialConnectNote}&rdquo;
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
