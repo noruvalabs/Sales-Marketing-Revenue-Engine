@@ -122,3 +122,4 @@ export function simulateCustomerPayment(params: {
   memoryRevenueLedger.unshift(revEvent);
   return revEvent;
 }
+
