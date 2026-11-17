@@ -86,3 +86,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: err.message || "Discovery search failed" }, { status: 500 });
   }
 }
+
