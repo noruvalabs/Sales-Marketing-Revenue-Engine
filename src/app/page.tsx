@@ -35,11 +35,15 @@ import {
   UploadCloud,
   Compass,
   FileSpreadsheet,
+  Bot,
+  Play,
+  Sliders,
+  Radio,
 } from "lucide-react";
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<
-    "overview" | "discovery" | "approvals" | "conversations" | "pipeline" | "suppression" | "revenue"
+    "overview" | "autopilot" | "discovery" | "approvals" | "conversations" | "pipeline" | "suppression" | "revenue"
   >("overview");
   const [discoveryMode, setDiscoveryMode] = useState<"auto" | "csv" | "manual">("auto");
   const [killSwitchActive, setKillSwitchActive] = useState(false);
@@ -62,10 +66,31 @@ export default function Dashboard() {
     ledger: [],
   });
   const [healthProfiles, setHealthProfiles] = useState<any[]>([]);
+  const [autopilotState, setAutopilotState] = useState<{
+    config: {
+      enabled: boolean;
+      minScoreToAutoDispatch: number;
+      maxDailyAutoSends: number;
+      lastRunAt: string | null;
+      nextRunScheduledAt: string | null;
+    };
+    logs: any[];
+  }>({
+    config: {
+      enabled: true,
+      minScoreToAutoDispatch: 85,
+      maxDailyAutoSends: 30,
+      lastRunAt: null,
+      nextRunScheduledAt: null,
+    },
+    logs: [],
+  });
+
   const [loading, setLoading] = useState(true);
   const [scoringLoading, setScoringLoading] = useState(false);
   const [autoDiscovering, setAutoDiscovering] = useState(false);
   const [bulkProcessing, setBulkProcessing] = useState(false);
+  const [runningAutopilot, setRunningAutopilot] = useState(false);
   const [sendingDraftId, setSendingDraftId] = useState<string | null>(null);
   const [simulatingReply, setSimulatingReply] = useState(false);
   const [convertingCompanyId, setConvertingCompanyId] = useState<string | null>(null);
@@ -166,12 +191,81 @@ Ramp Card,ramp.com,"Hiring 10 Account Executives",Colin Kennedy,colin@ramp.com,C
     }
   };
 
+  const fetchAutopilot = async () => {
+    try {
+      const res = await fetch("/api/autopilot");
+      const data = await res.json();
+      if (data.config) {
+        setAutopilotState({ config: data.config, logs: data.logs || [] });
+      }
+    } catch (err) {
+      console.error("Failed to load autopilot state", err);
+    }
+  };
+
   useEffect(() => {
     fetchLeads();
     fetchSuppressionList();
     fetchConversations();
     fetchRevenue();
+    fetchAutopilot();
   }, []);
+
+  const handleToggleAutopilot = async () => {
+    const nextState = !autopilotState.config.enabled;
+    try {
+      const res = await fetch("/api/autopilot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "TOGGLE", enabled: nextState }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAutopilotState((prev) => ({
+          ...prev,
+          config: { ...prev.config, enabled: nextState },
+        }));
+        setDispatchMessage({
+          text: nextState
+            ? "🤖 Autopilot Agent is now ACTIVE: Automatically discovering & dispatching leads with score ≥ 85."
+            : "⏸️ Autopilot Agent PAUSED: Switched to manual approval mode.",
+          type: "success",
+        });
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleRunAutopilotCycle = async () => {
+    setRunningAutopilot(true);
+    setDispatchMessage(null);
+    try {
+      const res = await fetch("/api/autopilot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "TRIGGER_CYCLE" }),
+      });
+      const data = await res.json();
+      if (data.success && data.cycleResult) {
+        const result = data.cycleResult;
+        if (result.leads) {
+          setCompanies((prev) => [...result.leads, ...prev]);
+        }
+        if (data.state) {
+          setAutopilotState(data.state);
+        }
+        setDispatchMessage({
+          text: `🚀 ${result.summary}`,
+          type: "success",
+        });
+      }
+    } catch (err: any) {
+      setDispatchMessage({ text: `Autopilot cycle failed: ${err.message}`, type: "error" });
+    } finally {
+      setRunningAutopilot(false);
+    }
+  };
 
   const handleAddLead = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -475,7 +569,7 @@ Ramp Card,ramp.com,"Hiring 10 Account Executives",Colin Kennedy,colin@ramp.com,C
 
   return (
     <div className="min-h-screen bg-[#07111f] text-slate-100 flex flex-col font-sans">
-      {/* Top Navigation Bar */}
+      {/* Top Navigation Bar with Autopilot & Kill Switch */}
       <header className="border-b border-slate-800/80 bg-[#0c1829]/80 backdrop-blur-md sticky top-0 z-50 px-6 py-3 flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-[#34d399] to-[#7dd3fc] flex items-center justify-center font-bold text-slate-950 text-sm shadow-lg shadow-[#34d399]/20">
@@ -492,12 +586,32 @@ Ramp Card,ramp.com,"Hiring 10 Account Executives",Colin Kennedy,colin@ramp.com,C
           </div>
         </div>
 
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-300">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        {/* Header Right Actions */}
+        <div className="flex items-center space-x-3">
+          {/* Autopilot Master Switch */}
+          <button
+            onClick={handleToggleAutopilot}
+            className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-md ${
+              autopilotState.config.enabled
+                ? "bg-gradient-to-r from-emerald-500/20 to-teal-500/20 text-emerald-400 border border-emerald-500/40 shadow-emerald-500/10"
+                : "bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            <Bot className={`w-4 h-4 ${autopilotState.config.enabled ? "text-emerald-400 animate-pulse" : "text-slate-500"}`} />
+            <span>
+              {autopilotState.config.enabled
+                ? "AUTOPILOT: ACTIVE (Score ≥ 85)"
+                : "AUTOPILOT: PAUSED"}
+            </span>
+          </button>
+
+          {/* AI Tier Badge */}
+          <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-300">
+            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
             <span>Gemini AI (Free Tier)</span>
           </div>
 
+          {/* Kill Switch */}
           <button
             onClick={() => setKillSwitchActive(!killSwitchActive)}
             className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
@@ -507,7 +621,7 @@ Ramp Card,ramp.com,"Hiring 10 Account Executives",Colin Kennedy,colin@ramp.com,C
             }`}
           >
             <ShieldCheck className="w-4 h-4" />
-            <span>{killSwitchActive ? "KILL SWITCH: ACTIVE" : "Safety Guard: Normal"}</span>
+            <span>{killSwitchActive ? "KILL SWITCH: ACTIVE" : "Safety: Normal"}</span>
           </button>
         </div>
       </header>
@@ -516,6 +630,7 @@ Ramp Card,ramp.com,"Hiring 10 Account Executives",Colin Kennedy,colin@ramp.com,C
       <div className="border-b border-slate-800/60 bg-[#091424] px-6 flex space-x-1 overflow-x-auto">
         {[
           { id: "overview", label: "Executive Overview", icon: TrendingUp },
+          { id: "autopilot", label: "Autopilot Agent (Hands-Free)", icon: Bot, highlight: true },
           { id: "discovery", label: "Lead Discovery & Scoring", icon: Search },
           {
             id: "approvals",
@@ -554,8 +669,8 @@ Ramp Card,ramp.com,"Hiring 10 Account Executives",Colin Kennedy,colin@ramp.com,C
                   : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"
               }`}
             >
-              <Icon className="w-4 h-4" />
-              <span>{tab.label}</span>
+              <Icon className={`w-4 h-4 ${tab.highlight ? "text-emerald-400" : ""}`} />
+              <span className={tab.highlight ? "font-bold text-white" : ""}>{tab.label}</span>
               {tab.badge !== undefined && (
                 <span className="bg-amber-500 text-slate-950 font-bold text-[10px] px-1.5 py-0.2 rounded-full">
                   {tab.badge}
@@ -594,6 +709,134 @@ Ramp Card,ramp.com,"Hiring 10 Account Executives",Colin Kennedy,colin@ramp.com,C
 
       {/* Main Workspace */}
       <main className="flex-1 p-6 max-w-7xl w-full mx-auto space-y-6">
+        {/* TAB: AUTOPILOT AGENT (THE ZERO-HUMAN COMMAND COCKPIT) */}
+        {activeTab === "autopilot" && (
+          <div className="space-y-6">
+            {/* Master Control Card */}
+            <div className="bg-[#0c1b2e] border border-emerald-500/30 rounded-xl p-6 shadow-xl shadow-emerald-500/5 space-y-5">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+                <div>
+                  <div className="flex items-center space-x-2.5">
+                    <span className="w-3 h-3 rounded-full bg-emerald-400 animate-ping"></span>
+                    <h2 className="text-lg font-bold text-white flex items-center space-x-2">
+                      <span>Autonomous AI Growth Agent (Full-Time SDR)</span>
+                    </h2>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Operating without human commands: Finds leads, qualifies hiring pain points, and auto-dispatches outreach for scores &ge; {autopilotState.config.minScoreToAutoDispatch}.
+                  </p>
+                </div>
+
+                <div className="flex items-center space-x-3">
+                  <button
+                    onClick={handleToggleAutopilot}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-md ${
+                      autopilotState.config.enabled
+                        ? "bg-emerald-500 hover:bg-emerald-400 text-slate-950"
+                        : "bg-slate-800 hover:bg-slate-700 text-white"
+                    }`}
+                  >
+                    {autopilotState.config.enabled ? "Autopilot: ON" : "Turn Autopilot ON"}
+                  </button>
+
+                  <button
+                    onClick={handleRunAutopilotCycle}
+                    disabled={runningAutopilot}
+                    className="bg-[#34d399] hover:bg-[#2fc28c] text-slate-950 px-4 py-2 rounded-lg text-xs font-bold flex items-center space-x-2 shadow-md shadow-[#34d399]/20"
+                  >
+                    {runningAutopilot ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Executing Autonomous Cycle...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-4 h-4 fill-slate-950" />
+                        <span>Run Autopilot Cycle Now</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Status Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="p-4 rounded-xl bg-slate-900 border border-slate-800">
+                  <div className="text-xs text-slate-400 font-medium">Autonomous Mode</div>
+                  <div className="text-xl font-bold text-emerald-400 mt-1">
+                    {autopilotState.config.enabled ? "Fully Autonomous" : "Paused"}
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">No marketing team needed</div>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-900 border border-slate-800">
+                  <div className="text-xs text-slate-400 font-medium">Auto-Send Threshold</div>
+                  <div className="text-xl font-bold text-white mt-1">
+                    Score &ge; {autopilotState.config.minScoreToAutoDispatch}
+                  </div>
+                  <div className="text-[11px] text-emerald-400 mt-0.5">High-confidence fit gate</div>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-900 border border-slate-800">
+                  <div className="text-xs text-slate-400 font-medium">Daily Outbound Safety Cap</div>
+                  <div className="text-xl font-bold text-white mt-1">
+                    {autopilotState.config.maxDailyAutoSends} / day
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">Protects domain reputation</div>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-900 border border-slate-800">
+                  <div className="text-xs text-slate-400 font-medium">Your Only Daily Job</div>
+                  <div className="text-xl font-bold text-[#7dd3fc] mt-1">Attend Demos</div>
+                  <div className="text-[11px] text-slate-400 mt-0.5">Alerted on Slack & Calendar</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Live Autopilot Activity & Execution Logs */}
+            <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-white flex items-center space-x-2">
+                    <Activity className="w-4 h-4 text-emerald-400" />
+                    <span>Autopilot Execution History & Activity Stream</span>
+                  </h3>
+                  <p className="text-xs text-slate-400">Verifiable trace of autonomous discovery, scoring, and auto-dispatches</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {autopilotState.logs.map((log) => (
+                  <div key={log.id} className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                        <span className="font-semibold text-white text-xs">{log.summary}</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500 font-mono">
+                        {new Date(log.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </div>
+
+                    {log.companies && log.companies.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {log.companies.map((c: string, idx: number) => (
+                          <span
+                            key={idx}
+                            className="text-[11px] px-2.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium"
+                          >
+                            ✓ Dispatched: {c}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* TAB 1: OVERVIEW */}
         {activeTab === "overview" && (
           <div className="space-y-6">
@@ -740,10 +983,9 @@ Ramp Card,ramp.com,"Hiring 10 Account Executives",Colin Kennedy,colin@ramp.com,C
           </div>
         )}
 
-        {/* TAB 2: LEAD DISCOVERY & SCORING (WITH 3 WORKFLOW MODES) */}
+        {/* TAB 2: LEAD DISCOVERY & SCORING */}
         {activeTab === "discovery" && (
           <div className="space-y-6">
-            {/* Mode Switcher */}
             <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-2 flex space-x-2">
               <button
                 onClick={() => setDiscoveryMode("auto")}
@@ -783,9 +1025,7 @@ Ramp Card,ramp.com,"Hiring 10 Account Executives",Colin Kennedy,colin@ramp.com,C
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Left Column: Interactive Input based on Mode */}
               <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-6 lg:col-span-1 space-y-4">
-                {/* 1. Automated Lead Finder Mode */}
                 {discoveryMode === "auto" && (
                   <div className="space-y-4 text-xs">
                     <div className="flex items-center space-x-2 text-white font-semibold text-sm">
@@ -854,7 +1094,6 @@ Ramp Card,ramp.com,"Hiring 10 Account Executives",Colin Kennedy,colin@ramp.com,C
                   </div>
                 )}
 
-                {/* 2. Bulk CSV Mode */}
                 {discoveryMode === "csv" && (
                   <div className="space-y-4 text-xs">
                     <div className="flex items-center space-x-2 text-white font-semibold text-sm">
@@ -906,7 +1145,6 @@ Ramp Card,ramp.com,"Hiring 10 Account Executives",Colin Kennedy,colin@ramp.com,C
                   </div>
                 )}
 
-                {/* 3. Manual Single Entry Mode */}
                 {discoveryMode === "manual" && (
                   <form onSubmit={handleAddLead} className="space-y-3 text-xs">
                     <div className="flex items-center space-x-2 text-white font-semibold text-sm">
@@ -1071,7 +1309,7 @@ Ramp Card,ramp.com,"Hiring 10 Account Executives",Colin Kennedy,colin@ramp.com,C
                   <span>Human-in-the-Loop Review & Dispatch Cockpit</span>
                 </h3>
                 <p className="text-xs text-slate-400">
-                  Every outbound message requires explicit human approval. Approved drafts can then be safely dispatched.
+                  Every outbound message requires explicit human approval unless Autopilot Agent is active.
                 </p>
               </div>
               <div className="flex space-x-2">
