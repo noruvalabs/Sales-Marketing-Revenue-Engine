@@ -32,12 +32,16 @@ import {
   HeartPulse,
   Activity,
   ArrowUpRight,
+  UploadCloud,
+  Compass,
+  FileSpreadsheet,
 } from "lucide-react";
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<
     "overview" | "discovery" | "approvals" | "conversations" | "pipeline" | "suppression" | "revenue"
   >("overview");
+  const [discoveryMode, setDiscoveryMode] = useState<"auto" | "csv" | "manual">("auto");
   const [killSwitchActive, setKillSwitchActive] = useState(false);
   const [companies, setCompanies] = useState<any[]>([]);
   const [suppressionList, setSuppressionList] = useState<any[]>([]);
@@ -60,12 +64,14 @@ export default function Dashboard() {
   const [healthProfiles, setHealthProfiles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [scoringLoading, setScoringLoading] = useState(false);
+  const [autoDiscovering, setAutoDiscovering] = useState(false);
+  const [bulkProcessing, setBulkProcessing] = useState(false);
   const [sendingDraftId, setSendingDraftId] = useState<string | null>(null);
   const [simulatingReply, setSimulatingReply] = useState(false);
   const [convertingCompanyId, setConvertingCompanyId] = useState<string | null>(null);
   const [dispatchMessage, setDispatchMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
-  // New Lead Form State
+  // Manual Form State
   const [formData, setFormData] = useState({
     name: "",
     domain: "",
@@ -76,6 +82,21 @@ export default function Dashboard() {
     contactEmail: "alex@targetco.com",
     contactTitle: "VP of Sales",
   });
+
+  // Automated Discovery State
+  const [autoSearchInput, setAutoSearchInput] = useState({
+    personaKeyword: "B2B SaaS companies expanding remote sales teams and SDRs",
+    pillar: "CLIENT_MEETINGS" as "CLIENT_MEETINGS" | "INTERVIEW_COPILOT" | "CUSTOMER_SUPPORT" | "BILINGUAL_AI",
+    count: 3,
+  });
+
+  // Bulk CSV State
+  const sampleCSV = `Company,Domain,HiringSignals,ContactName,ContactEmail,ContactTitle,Industry
+Loom Video,loom.com,"Hiring 6 Remote Sales SDRs",Vinay Hiremath,vinay@loom.com,CTO & Co-founder,Video Communication
+Turing AI,turing.com,"Hiring 15 Technical Screeners",Jonathan Siddharth,jonathan@turing.com,CEO,Tech Staffing
+Ramp Card,ramp.com,"Hiring 10 Account Executives",Colin Kennedy,colin@ramp.com,Chief Business Officer,Fintech SaaS`;
+
+  const [csvInput, setCsvInput] = useState(sampleCSV);
 
   // Suppression Form State
   const [suppressionInput, setSuppressionInput] = useState({
@@ -180,6 +201,57 @@ export default function Dashboard() {
       console.error(err);
     } finally {
       setScoringLoading(false);
+    }
+  };
+
+  const handleRunAutoDiscovery = async () => {
+    setAutoDiscovering(true);
+    setDispatchMessage(null);
+    try {
+      const res = await fetch("/api/discovery/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(autoSearchInput),
+      });
+      const data = await res.json();
+      if (data.success && data.leads) {
+        setCompanies((prev) => [...data.leads, ...prev]);
+        setDispatchMessage({
+          text: `🎯 Discovered & Scored ${data.count} fresh B2B accounts matching "${autoSearchInput.personaKeyword}". Drafts added to Review Cockpit!`,
+          type: "success",
+        });
+      }
+    } catch (err: any) {
+      setDispatchMessage({ text: `Discovery error: ${err.message}`, type: "error" });
+    } finally {
+      setAutoDiscovering(false);
+    }
+  };
+
+  const handleRunBulkCSV = async () => {
+    setBulkProcessing(true);
+    setDispatchMessage(null);
+    try {
+      const res = await fetch("/api/leads/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csvText: csvInput }),
+      });
+      const data = await res.json();
+      if (data.success && data.leads) {
+        setCompanies((prev) => [...data.leads, ...prev]);
+        setDispatchMessage({
+          text: `📁 CSV Batch Processed: ${data.totalParsed} parsed, ${data.qualifiedCount} Qualified Leads, ${data.disqualifiedCount} Low Fit.`,
+          type: "success",
+        });
+        setActiveTab("approvals");
+      } else {
+        setDispatchMessage({ text: `CSV Error: ${data.error}`, type: "error" });
+      }
+    } catch (err: any) {
+      setDispatchMessage({ text: `CSV processing failed: ${err.message}`, type: "error" });
+    } finally {
+      setBulkProcessing(false);
     }
   };
 
@@ -332,7 +404,6 @@ export default function Dashboard() {
 
       const data = await res.json();
       if (data.success) {
-        // Update deal stage in state
         setCompanies((prev) =>
           prev.map((item) => {
             if (item.id === company.id) {
@@ -495,7 +566,7 @@ export default function Dashboard() {
         })}
       </div>
 
-      {/* Dispatch / Notification Banner */}
+      {/* Notification Banner */}
       {dispatchMessage && (
         <div
           className={`px-6 py-2.5 text-xs font-medium flex items-center justify-between border-b ${
@@ -521,7 +592,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Content Area */}
+      {/* Main Workspace */}
       <main className="flex-1 p-6 max-w-7xl w-full mx-auto space-y-6">
         {/* TAB 1: OVERVIEW */}
         {activeTab === "overview" && (
@@ -572,7 +643,7 @@ export default function Dashboard() {
               </h3>
               <div className="grid grid-cols-2 md:grid-cols-6 gap-3 text-center">
                 {[
-                  { step: "1. Discover", desc: "Data APIs & Signals", status: "Active" },
+                  { step: "1. Discover", desc: "Auto AI & CSV", status: "Active" },
                   { step: "2. Qualify", desc: "0-100 ICP Scoring", status: "Active" },
                   { step: "3. Review", desc: "Human Sign-off", status: "Active" },
                   { step: "4. Dispatch", desc: "Safe Email Delivery", status: "Active" },
@@ -669,150 +740,322 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* TAB 2: LEAD DISCOVERY & SCORING */}
+        {/* TAB 2: LEAD DISCOVERY & SCORING (WITH 3 WORKFLOW MODES) */}
         {activeTab === "discovery" && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-6 lg:col-span-1 space-y-4">
-              <div className="flex items-center space-x-2 text-white font-semibold text-sm">
-                <Plus className="w-4 h-4 text-[#34d399]" />
-                <span>Ingest & AI-Score Prospect</span>
-              </div>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Add a target company or paste a lead. The AI agent will inspect their hiring signals and match them with Noruva’s product pillars.
-              </p>
+          <div className="space-y-6">
+            {/* Mode Switcher */}
+            <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-2 flex space-x-2">
+              <button
+                onClick={() => setDiscoveryMode("auto")}
+                className={`flex-1 py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center space-x-2 transition-all ${
+                  discoveryMode === "auto"
+                    ? "bg-[#34d399] text-slate-950 shadow-md shadow-[#34d399]/20"
+                    : "text-slate-400 hover:text-white hover:bg-slate-800/40"
+                }`}
+              >
+                <Compass className="w-4 h-4" />
+                <span>AI Automated Lead Finder (Hands-Free)</span>
+              </button>
 
-              <form onSubmit={handleAddLead} className="space-y-3 text-xs">
-                <div>
-                  <label className="block text-slate-300 font-medium mb-1">Company Name</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="e.g. Acme Cloud"
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-[#34d399]"
-                  />
-                </div>
+              <button
+                onClick={() => setDiscoveryMode("csv")}
+                className={`flex-1 py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center space-x-2 transition-all ${
+                  discoveryMode === "csv"
+                    ? "bg-sky-500 text-slate-950 shadow-md shadow-sky-500/20"
+                    : "text-slate-400 hover:text-white hover:bg-slate-800/40"
+                }`}
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                <span>Bulk CSV / Excel Batch Ingestion</span>
+              </button>
 
-                <div>
-                  <label className="block text-slate-300 font-medium mb-1">Domain</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.domain}
-                    onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
-                    placeholder="e.g. acmecloud.com"
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-[#34d399]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-300 font-medium mb-1">Hiring Signals / Job Openings</label>
-                  <input
-                    type="text"
-                    value={formData.hiringSignals}
-                    onChange={(e) => setFormData({ ...formData, hiringSignals: e.target.value })}
-                    placeholder="e.g. Hiring 4 Remote SDRs"
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-[#34d399]"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-slate-300 font-medium mb-1">Contact Name</label>
-                    <input
-                      type="text"
-                      value={formData.contactName}
-                      onChange={(e) => setFormData({ ...formData, contactName: e.target.value })}
-                      placeholder="e.g. John Doe"
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-[#34d399]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-slate-300 font-medium mb-1">Role / Title</label>
-                    <input
-                      type="text"
-                      value={formData.contactTitle}
-                      onChange={(e) => setFormData({ ...formData, contactTitle: e.target.value })}
-                      placeholder="e.g. VP Sales"
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-[#34d399]"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-slate-300 font-medium mb-1">Verified Email</label>
-                  <input
-                    type="email"
-                    value={formData.contactEmail}
-                    onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })}
-                    placeholder="e.g. john@acmecloud.com"
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-[#34d399]"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={scoringLoading}
-                  className="w-full mt-2 bg-[#34d399] hover:bg-[#2fc28c] text-slate-950 font-bold py-2.5 rounded-lg flex items-center justify-center space-x-2 transition-all shadow-md shadow-[#34d399]/20"
-                >
-                  {scoringLoading ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      <span>AI Scoring in Progress...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4" />
-                      <span>Qualify & Generate Draft</span>
-                    </>
-                  )}
-                </button>
-              </form>
+              <button
+                onClick={() => setDiscoveryMode("manual")}
+                className={`flex-1 py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center space-x-2 transition-all ${
+                  discoveryMode === "manual"
+                    ? "bg-purple-500 text-slate-950 shadow-md shadow-purple-500/20"
+                    : "text-slate-400 hover:text-white hover:bg-slate-800/40"
+                }`}
+              >
+                <Plus className="w-4 h-4" />
+                <span>Manual Single Entry</span>
+              </button>
             </div>
 
-            <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-6 lg:col-span-2 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-white">Scored Leads Database</h3>
-                <span className="text-xs text-slate-400">{companies.length} records</span>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Left Column: Interactive Input based on Mode */}
+              <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-6 lg:col-span-1 space-y-4">
+                {/* 1. Automated Lead Finder Mode */}
+                {discoveryMode === "auto" && (
+                  <div className="space-y-4 text-xs">
+                    <div className="flex items-center space-x-2 text-white font-semibold text-sm">
+                      <Sparkles className="w-4 h-4 text-[#34d399]" />
+                      <span>Autonomous B2B Lead Finder</span>
+                    </div>
+                    <p className="text-slate-400 leading-relaxed">
+                      Set your ideal buyer persona. The AI agent will search, discover target companies, verify decision makers, calculate ICP scores, and generate email drafts automatically.
+                    </p>
+
+                    <div>
+                      <label className="block text-slate-300 font-medium mb-1">Target Product Pillar</label>
+                      <select
+                        value={autoSearchInput.pillar}
+                        onChange={(e) => setAutoSearchInput({ ...autoSearchInput, pillar: e.target.value as any })}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-[#34d399]"
+                      >
+                        <option value="CLIENT_MEETINGS">Client Meetings (Objection hints for B2B Sales)</option>
+                        <option value="INTERVIEW_COPILOT">Interview Copilot (Staffing & Tech Screening)</option>
+                        <option value="CUSTOMER_SUPPORT">Customer Support (Real-time call sentiment)</option>
+                        <option value="BILINGUAL_AI">Bilingual AI (Global distributed teams)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 font-medium mb-1">Target Persona & Hiring Signal</label>
+                      <input
+                        type="text"
+                        value={autoSearchInput.personaKeyword}
+                        onChange={(e) => setAutoSearchInput({ ...autoSearchInput, personaKeyword: e.target.value })}
+                        placeholder="e.g. B2B SaaS companies expanding remote sales teams"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-[#34d399]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 font-medium mb-1">Number of Accounts to Discover</label>
+                      <select
+                        value={autoSearchInput.count}
+                        onChange={(e) => setAutoSearchInput({ ...autoSearchInput, count: Number(e.target.value) })}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-[#34d399]"
+                      >
+                        <option value={3}>Discover 3 High-Fit Leads</option>
+                        <option value={5}>Discover 5 High-Fit Leads</option>
+                      </select>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={autoDiscovering}
+                      onClick={handleRunAutoDiscovery}
+                      className="w-full mt-2 bg-[#34d399] hover:bg-[#2fc28c] text-slate-950 font-bold py-2.5 rounded-lg flex items-center justify-center space-x-2 transition-all shadow-md shadow-[#34d399]/20"
+                    >
+                      {autoDiscovering ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>Searching & Scoring on Autopilot...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Compass className="w-4 h-4" />
+                          <span>Launch Automated Lead Finder</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {/* 2. Bulk CSV Mode */}
+                {discoveryMode === "csv" && (
+                  <div className="space-y-4 text-xs">
+                    <div className="flex items-center space-x-2 text-white font-semibold text-sm">
+                      <FileSpreadsheet className="w-4 h-4 text-sky-400" />
+                      <span>Bulk CSV / Excel Batch Ingestion</span>
+                    </div>
+                    <p className="text-slate-400 leading-relaxed">
+                      Paste a CSV list of companies. The system will parse columns, deduplicate against existing leads, and run AI qualification for each.
+                    </p>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-slate-300 font-medium">CSV Text (Comma Separated)</label>
+                        <button
+                          type="button"
+                          onClick={() => setCsvInput(sampleCSV)}
+                          className="text-[11px] text-sky-400 hover:underline"
+                        >
+                          Reset Sample
+                        </button>
+                      </div>
+                      <textarea
+                        rows={8}
+                        value={csvInput}
+                        onChange={(e) => setCsvInput(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-200 font-mono text-[11px] focus:outline-none focus:border-sky-400"
+                        placeholder="Company,Domain,HiringSignals,ContactName,ContactEmail..."
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={bulkProcessing}
+                      onClick={handleRunBulkCSV}
+                      className="w-full bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold py-2.5 rounded-lg flex items-center justify-center space-x-2 transition-all shadow-md shadow-sky-500/20"
+                    >
+                      {bulkProcessing ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>Processing Batch & Qualifying...</span>
+                        </>
+                      ) : (
+                        <>
+                          <UploadCloud className="w-4 h-4" />
+                          <span>Process CSV Batch</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {/* 3. Manual Single Entry Mode */}
+                {discoveryMode === "manual" && (
+                  <form onSubmit={handleAddLead} className="space-y-3 text-xs">
+                    <div className="flex items-center space-x-2 text-white font-semibold text-sm">
+                      <Plus className="w-4 h-4 text-purple-400" />
+                      <span>Single Company Ingestion</span>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 font-medium mb-1">Company Name</label>
+                      <input
+                        type="text"
+                        required
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        placeholder="e.g. Acme Cloud"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 font-medium mb-1">Domain</label>
+                      <input
+                        type="text"
+                        required
+                        value={formData.domain}
+                        onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
+                        placeholder="e.g. acmecloud.com"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 font-medium mb-1">Hiring Signals</label>
+                      <input
+                        type="text"
+                        value={formData.hiringSignals}
+                        onChange={(e) => setFormData({ ...formData, hiringSignals: e.target.value })}
+                        placeholder="e.g. Hiring 4 Remote SDRs"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-400"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-slate-300 font-medium mb-1">Contact Name</label>
+                        <input
+                          type="text"
+                          value={formData.contactName}
+                          onChange={(e) => setFormData({ ...formData, contactName: e.target.value })}
+                          placeholder="e.g. John Doe"
+                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-300 font-medium mb-1">Role / Title</label>
+                        <input
+                          type="text"
+                          value={formData.contactTitle}
+                          onChange={(e) => setFormData({ ...formData, contactTitle: e.target.value })}
+                          placeholder="e.g. VP Sales"
+                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-400"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 font-medium mb-1">Verified Email</label>
+                      <input
+                        type="email"
+                        value={formData.contactEmail}
+                        onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })}
+                        placeholder="e.g. john@acmecloud.com"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-400"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={scoringLoading}
+                      className="w-full mt-2 bg-purple-500 hover:bg-purple-400 text-slate-950 font-bold py-2.5 rounded-lg flex items-center justify-center space-x-2 transition-all shadow-md shadow-purple-500/20"
+                    >
+                      {scoringLoading ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>AI Scoring in Progress...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4" />
+                          <span>Qualify & Generate Draft</span>
+                        </>
+                      )}
+                    </button>
+                  </form>
+                )}
               </div>
 
-              <div className="space-y-3">
-                {companies.map((c) => (
-                  <div key={c.id} className="p-4 rounded-xl bg-slate-900/70 border border-slate-800/80 space-y-2">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="flex items-center space-x-2">
-                          <span className="font-bold text-white text-sm">{c.name}</span>
-                          <span className="text-slate-500 text-xs font-mono">({c.domain})</span>
-                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20">
-                            {c.recommendedPillar?.replace("_", " ")}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-400 mt-1">
-                          <span className="text-slate-500">Contact:</span>{" "}
-                          {c.contacts?.[0]?.firstName} {c.contacts?.[0]?.lastName} — {c.contacts?.[0]?.title} (
-                          {c.contacts?.[0]?.email})
-                        </p>
-                      </div>
-
-                      <div className="text-right">
-                        <div className="text-lg font-extrabold text-emerald-400">
-                          {c.icpScore}
-                          <span className="text-slate-500 text-xs font-normal">/100</span>
-                        </div>
-                        <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-500">
-                          {c.icpScore >= 70 ? "HIGH FIT" : "LOW FIT"}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="p-2.5 rounded-lg bg-slate-950/60 border border-slate-800 text-[11px] text-slate-300">
-                      <span className="text-[#34d399] font-semibold">AI Qualification Reasoning:</span>{" "}
-                      {c.icpScoreReason}
-                    </div>
+              {/* Right Column: Scored Leads Database */}
+              <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-6 lg:col-span-2 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-white">Scored Leads Database</h3>
+                    <p className="text-xs text-slate-400">All discovered and qualified B2B accounts with explainable scoring</p>
                   </div>
-                ))}
+                  <span className="text-xs bg-slate-800 text-slate-300 px-2.5 py-1 rounded-full font-mono">
+                    {companies.length} records
+                  </span>
+                </div>
+
+                <div className="space-y-3 max-h-[640px] overflow-y-auto pr-1">
+                  {companies.map((c) => (
+                    <div key={c.id} className="p-4 rounded-xl bg-slate-900/70 border border-slate-800/80 space-y-2">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <span className="font-bold text-white text-sm">{c.name}</span>
+                            <span className="text-slate-500 text-xs font-mono">({c.domain})</span>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                              {c.recommendedPillar?.replace("_", " ")}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-400 mt-1">
+                            <span className="text-slate-500">Contact:</span>{" "}
+                            {c.contacts?.[0]?.firstName} {c.contacts?.[0]?.lastName} — {c.contacts?.[0]?.title} (
+                            {c.contacts?.[0]?.email})
+                          </p>
+                          <div className="text-[11px] text-slate-500 mt-0.5 truncate max-w-md">
+                            Signal: {c.hiringSignals}
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <div className="text-lg font-extrabold text-emerald-400">
+                            {c.icpScore}
+                            <span className="text-slate-500 text-xs font-normal">/100</span>
+                          </div>
+                          <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-500">
+                            {c.icpScore >= 70 ? "HIGH FIT" : "LOW FIT"}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-2.5 rounded-lg bg-slate-950/60 border border-slate-800 text-[11px] text-slate-300">
+                        <span className="text-[#34d399] font-semibold">AI Qualification Reasoning:</span>{" "}
+                        {c.icpScoreReason}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
@@ -846,7 +1089,7 @@ export default function Dashboard() {
                 <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto" />
                 <h4 className="text-base font-bold text-white">No Drafts in Queue</h4>
                 <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                  Add new leads to trigger personalized AI outreach sequences.
+                  Add or discover new leads to trigger personalized AI outreach sequences.
                 </p>
               </div>
             ) : (
@@ -1079,7 +1322,7 @@ export default function Dashboard() {
                   <h3 className="text-sm font-semibold text-white">Conversation Inbox & Intelligence Feed</h3>
                   <p className="text-xs text-slate-400">Classified replies with sentiment and recommended responses</p>
                 </div>
-                <span className="text-xs bg-slate-800 text-slate-300 px-2.5 py-1 rounded-full">
+                <span className="text-xs bg-slate-800 text-slate-300 px-2.5 py-1 rounded-full font-mono">
                   {conversations.length} incoming messages
                 </span>
               </div>
@@ -1326,7 +1569,6 @@ export default function Dashboard() {
         {/* TAB 7: REVENUE ATTRIBUTION & CUSTOMER RETENTION */}
         {activeTab === "revenue" && (
           <div className="space-y-6">
-            {/* Top Revenue KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-5 shadow-sm">
                 <div className="flex items-center justify-between text-slate-400 text-xs font-medium mb-2">
@@ -1375,7 +1617,7 @@ export default function Dashboard() {
                   </h3>
                   <p className="text-xs text-slate-400">Monitoring post-sale product activation, usage health, and upsell triggers</p>
                 </div>
-                <span className="text-xs bg-slate-800 text-slate-300 px-2.5 py-1 rounded-full">
+                <span className="text-xs bg-slate-800 text-slate-300 px-2.5 py-1 rounded-full font-mono">
                   {healthProfiles.length} active customer accounts
                 </span>
               </div>
