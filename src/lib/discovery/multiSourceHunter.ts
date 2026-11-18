@@ -382,7 +382,7 @@ Return a strict JSON array ONLY (no markdown backticks, no comments) matching th
 `;
 
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.5-flash-lite",
         contents: prompt,
       });
 
