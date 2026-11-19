@@ -666,40 +666,40 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-white flex items-center space-x-2">
                       <Globe className="w-4 h-4 text-sky-400" />
-                      <span>Multi-Source Lead Radar</span>
+                      <span>Lead providers</span>
                     </span>
-                    <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded font-mono">
-                      4 Channels Active
+                    <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono">
+                      API key needed
                     </span>
                   </div>
                   <div className="space-y-2 text-xs">
                     <div className="flex items-center justify-between text-slate-300">
                       <span className="flex items-center space-x-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                        <span>Google Search SERP Dorking</span>
+                        <span>Prospeo</span>
                       </span>
-                      <span className="text-[11px] text-slate-400">Hiring signals scanner</span>
+                      <span className="text-[11px] text-slate-400">Verified emails</span>
                     </div>
                     <div className="flex items-center justify-between text-slate-300">
                       <span className="flex items-center space-x-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                        <span>Apollo.io B2B Directory</span>
+                        <span>Apollo.io</span>
                       </span>
                       <span className="text-[11px] text-slate-400">Decision makers & emails</span>
                     </div>
                     <div className="flex items-center justify-between text-slate-300">
                       <span className="flex items-center space-x-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                        <span>LinkedIn Executive Radar</span>
+                        <span>Hunter.io</span>
                       </span>
-                      <span className="text-[11px] text-slate-400">Job change & headcount</span>
+                      <span className="text-[11px] text-slate-400">Finder + verifier</span>
                     </div>
                     <div className="flex items-center justify-between text-slate-300">
                       <span className="flex items-center space-x-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                        <span>Facebook Business & Web Scraper</span>
+                        <span>Company research</span>
                       </span>
-                      <span className="text-[11px] text-slate-400">Target company profiles</span>
+                      <span className="text-[11px] text-slate-400">Tavily / company website</span>
                     </div>
                   </div>
                 </div>
@@ -708,21 +708,21 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-white flex items-center space-x-2">
                       <Terminal className="w-4 h-4 text-emerald-400" />
-                      <span>Zero-Human Autonomous Cron Endpoint</span>
+                      <span>Cron endpoint</span>
                     </span>
                     <span className="text-[10px] bg-sky-500/10 text-sky-400 px-2 py-0.5 rounded font-mono">
                       Ready for Webhook
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-400 leading-relaxed">
-                    Trigger full autonomous cycles without touching the keyboard. Add this URL to GitHub Actions, Vercel Cron, or cron-job.org:
+                    Run cycles on a schedule with GitHub Actions, Vercel Cron, or cron-job.org:
                   </p>
                   <div className="p-2 rounded bg-slate-950 border border-slate-800 text-[11px] font-mono text-emerald-400 select-all overflow-x-auto">
                     POST /api/autopilot/cron
                   </div>
                   <div className="text-[10px] text-slate-500 flex items-center justify-between">
                     <span>Runs discovery, scoring, and auto-dispatch</span>
-                    <span>100% Autonomous</span>
+                    <span>Respects approval + verification rules</span>
                   </div>
                 </div>
               </div>
@@ -902,7 +902,7 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
                 }`}
               >
                 <Compass className="w-4 h-4" />
-                <span>AI Automated Lead Finder (Hands-Free)</span>
+                <span>Find leads (API)</span>
               </button>
 
               <button
@@ -914,7 +914,7 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
                 }`}
               >
                 <FileSpreadsheet className="w-4 h-4" />
-                <span>Bulk CSV / Excel Batch Ingestion</span>
+                <span>Import CSV</span>
               </button>
 
               <button
@@ -926,7 +926,7 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
                 }`}
               >
                 <Plus className="w-4 h-4" />
-                <span>Manual Single Entry</span>
+                <span>Add manually</span>
               </button>
             </div>
 
@@ -936,10 +936,10 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
                   <div className="space-y-4 text-xs">
                     <div className="flex items-center space-x-2 text-white font-semibold text-sm">
                       <Sparkles className="w-4 h-4 text-[#34d399]" />
-                      <span>Autonomous B2B Lead Finder</span>
+                      <span>Find leads</span>
                     </div>
                     <p className="text-slate-400 leading-relaxed">
-                      Set your ideal buyer persona. The AI agent will search, discover target companies, verify decision makers, calculate ICP scores, and generate email drafts automatically.
+                      Searches Prospeo, Apollo and Hunter, verifies emails, scores each lead and drafts the emails. Needs at least one provider API key.
                     </p>
 
                     <div>
@@ -957,13 +957,12 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
                     </div>
 
                     <div>
-                      <label className="block text-slate-300 font-medium mb-1.5">Lead Sources & Channels</label>
+                      <label className="block text-slate-300 font-medium mb-1.5">Lead providers</label>
                       <div className="grid grid-cols-2 gap-2">
                         {[
-                          { id: "GOOGLE_SEARCH", label: "Google Search", icon: Globe },
-                          { id: "APOLLO", label: "Apollo.io API", icon: Zap },
-                          { id: "LINKEDIN", label: "LinkedIn Radar", icon: Share2 },
-                          { id: "FACEBOOK", label: "Facebook / Web", icon: Users },
+                          { id: "PROSPEO", label: "Prospeo", icon: Zap },
+                          { id: "APOLLO", label: "Apollo.io", icon: Globe },
+                          { id: "HUNTER", label: "Hunter.io", icon: Search },
                         ].map((src) => {
                           const isSelected = autoSearchInput.sources.includes(src.id);
                           return (
@@ -1002,7 +1001,7 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
                     </div>
 
                     <div>
-                      <label className="block text-slate-300 font-medium mb-1">Number of Accounts to Discover</label>
+                      <label className="block text-slate-300 font-medium mb-1">How many leads</label>
                       <select
                         value={autoSearchInput.count}
                         onChange={(e) => setAutoSearchInput({ ...autoSearchInput, count: Number(e.target.value) })}
@@ -1207,15 +1206,7 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
                             </span>
                             {c.source && (
                               <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                {c.source === "GOOGLE_SEARCH"
-                                  ? "🌐 Google Search"
-                                  : c.source === "APOLLO"
-                                  ? "⚡ Apollo.io"
-                                  : c.source === "LINKEDIN"
-                                  ? "💼 LinkedIn Radar"
-                                  : c.source === "FACEBOOK"
-                                  ? "👥 Facebook Page"
-                                  : c.source}
+                                {c.source}
                               </span>
                             )}
                           </div>
