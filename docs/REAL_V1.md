@@ -111,7 +111,7 @@ Compare: AiSDR $250/mo for 200 contacts · Reply.io Jason from $500/mo · 11x fr
 2. Sequence scheduler: a cron that sends step 2/3 only if no reply, not suppressed, still VALID — and stops on any reply.
 3. Smartlead/Instantly send adapter (replace Gmail SMTP for real campaigns) + bounce/reply webhooks feeding the classifier automatically.
 4. Auth on all API routes (today they are open — do not deploy publicly without it).
-5. Split the 2,090-line `page.tsx` dashboard into components.
+5. ~~Split the 2,090-line `page.tsx` dashboard into components.~~ UI cleanup done 2026-11-19 (commit `3c0b105`): page.tsx cut to ~1,680 lines, 8 tabs → 7 with short names, all simulate/fake features removed (Simulate Paid, Simulate Reply, fake kill-switch button, fake $600 MRR defaults, Retention/Health section, Revenue tab, decorative flowchart). Splitting the remaining file into components is still open.
 6. Reply inbox polling (Gmail/IMAP or Smartlead Unibox webhook) so replies are classified without manual paste.
 7. Torii partner campaign pack: same engine, ICP = visa/education agencies and consultancies, different pillars/copy.
 
