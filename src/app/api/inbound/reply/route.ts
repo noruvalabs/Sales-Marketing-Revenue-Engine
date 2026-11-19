@@ -3,24 +3,6 @@ import { prisma } from "@/lib/prisma";
 import { classifyInboundReply } from "@/lib/ai/classifier";
 import { sendSlackHighIntentAlert } from "@/lib/notifications/slack";
 
-// Fallback in-memory conversations list for UI reactivity
-let memoryConversations: any[] = [
-  {
-    id: "conv-1",
-    prospectName: "Marcus Vance",
-    companyName: "CloudScale Systems",
-    email: "marcus@cloudscale.io",
-    messageText: "Hi! This timing is uncanny—we just hired 4 SDRs and ramping them is brutal. Can we do a 15-minute call Thursday morning?",
-    intent: "INTERESTED",
-    confidence: 96,
-    summary: "High buying intent: Prospect requested a 15-minute call for Thursday.",
-    recommendedAction: "Send calendar booking link and prepare Interview/Client Meeting demo.",
-    suggestedReply: "Hi Marcus,\n\nThursday morning works great! You can grab any slot that suits you here: https://cal.com/noruva-team/15min\n\nLooking forward to speaking!\n\nBest,\nNoruva Team",
-    slackAlerted: true,
-    createdAt: new Date().toISOString(),
-  },
-];
-
 export async function GET() {
   try {
     const list = await prisma.conversation.findMany({
@@ -34,14 +16,26 @@ export async function GET() {
       orderBy: { createdAt: "desc" },
     });
 
-    if (list.length > 0) {
-      return NextResponse.json({ success: true, conversations: list, source: "database" });
-    }
-  } catch (err) {
-    console.warn("Could not query DB for conversations, using memory:", err);
-  }
+    const formatted = list.map((conv) => ({
+      id: conv.id,
+      prospectName: conv.contact ? `${conv.contact.firstName} ${conv.contact.lastName}` : "Valued Lead",
+      companyName: conv.contact?.company?.name || "Target Company",
+      email: conv.contact?.email || "",
+      messageText: conv.rawText,
+      intent: conv.sentiment,
+      confidence: 92,
+      summary: conv.rawText.length > 100 ? `${conv.rawText.slice(0, 100)}...` : conv.rawText,
+      recommendedAction: conv.sentiment === "INTERESTED" ? "Follow up with calendar link" : "Review reply",
+      suggestedReply: "",
+      slackAlerted: conv.sentiment === "INTERESTED",
+      createdAt: conv.createdAt.toISOString(),
+    }));
 
-  return NextResponse.json({ success: true, conversations: memoryConversations, source: "memory" });
+    return NextResponse.json({ success: true, conversations: formatted, source: "database" });
+  } catch (err: any) {
+    console.error("Could not query DB for conversations:", err);
+    return NextResponse.json({ success: true, conversations: [], error: err.message }, { status: 500 });
+  }
 }
 
 export async function POST(req: Request) {
@@ -55,7 +49,7 @@ export async function POST(req: Request) {
     const resolvedProspectName = prospectName || "Valued Lead";
     const resolvedCompanyName = companyName || email.split("@")[1] || "Company";
 
-    // 1. Run AI Intent Classifier
+    // 1. Run Real AI Intent Classifier with Gemini
     const classification = await classifyInboundReply({
       prospectName: resolvedProspectName,
       companyName: resolvedCompanyName,
@@ -66,7 +60,7 @@ export async function POST(req: Request) {
 
     // 2. High-Intent Actions
     if (classification.intent === "INTERESTED") {
-      // Trigger Slack Alert
+      // Trigger Real Slack Alert
       slackResult = await sendSlackHighIntentAlert({
         prospectName: resolvedProspectName,
         companyName: resolvedCompanyName,
@@ -121,9 +115,29 @@ export async function POST(req: Request) {
       }
     }
 
-    // 4. Save Conversation Entry
+    // 4. Save Conversation Entry to Supabase DB
+    let savedConv = null;
+    try {
+      const contact = await prisma.contact.findUnique({
+        where: { email: email.toLowerCase().trim() },
+      });
+
+      if (contact) {
+        savedConv = await prisma.conversation.create({
+          data: {
+            contactId: contact.id,
+            direction: "INBOUND",
+            sentiment: (classification.intent as any) || "NEUTRAL",
+            rawText: messageText,
+          },
+        });
+      }
+    } catch (err) {
+      console.warn("Could not save conversation to DB:", err);
+    }
+
     const record = {
-      id: `conv-${Date.now()}`,
+      id: savedConv ? savedConv.id : `conv-${Date.now()}`,
       prospectName: resolvedProspectName,
       companyName: resolvedCompanyName,
       email,
@@ -137,8 +151,6 @@ export async function POST(req: Request) {
       createdAt: new Date().toISOString(),
     };
 
-    memoryConversations.unshift(record);
-
     return NextResponse.json({
       success: true,
       conversation: record,
@@ -149,4 +161,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: err.message || "Failed to process inbound reply" }, { status: 500 });
   }
 }
-

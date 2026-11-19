@@ -11,19 +11,8 @@ export interface RevenueEvent {
   timestamp: string;
 }
 
-// In-memory ledger for rapid local evaluation & simulation
-let memoryRevenueLedger: RevenueEvent[] = [
-  {
-    id: "rev-1",
-    companyName: "CloudScale Systems",
-    domain: "cloudscale.io",
-    amountMrr: 600,
-    type: "NEW_SUBSCRIPTION",
-    pillar: "CLIENT_MEETINGS",
-    stripeInvoiceId: "in_1NoruvaMockPaid001",
-    timestamp: new Date(Date.now() - 86400000 * 2).toISOString(),
-  },
-];
+// Revenue ledger (starts clean with 0 records until real payments occur)
+let memoryRevenueLedger: RevenueEvent[] = [];
 
 export async function processStripeSubscriptionEvent(event: {
   type: string;

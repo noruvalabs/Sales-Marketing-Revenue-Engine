@@ -221,19 +221,7 @@ Return a clean JSON array ONLY (no markdown formatting, no code block) matching 
     }
   }
 
-  // Fallback to high-quality curated catalog
-  const catalogList = CURATED_DISCOVERY_CATALOG[pillar] || CURATED_DISCOVERY_CATALOG.CLIENT_MEETINGS;
-  const selected = catalogList.slice(0, count);
-
-  const results: DiscoveredLeadProfile[] = [];
-  for (const item of selected) {
-    const qual = await qualifyCompany(item);
-    results.push({
-      ...item,
-      qualification: qual,
-    });
-  }
-
-  return results;
+  // Fallback: return empty array if no leads discovered
+  return [];
 }
 

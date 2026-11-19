@@ -416,17 +416,10 @@ Return a strict JSON array ONLY (no markdown backticks, no comments) matching th
     }
   }
 
-  // 3. Guaranteed Curated Multi-Source Catalog Fallback
-  if (rawLeads.length < count) {
-    const catalog = MULTI_SOURCE_CATALOG[pillar] || MULTI_SOURCE_CATALOG.CLIENT_MEETINGS;
-    for (const item of catalog) {
-      if (!rawLeads.some((l) => l.domain.toLowerCase() === item.domain.toLowerCase())) {
-        if (sources.length === 0 || sources.includes(item.source)) {
-          rawLeads.push(item);
-        }
-      }
-      if (rawLeads.length >= count) break;
-    }
+  // 3. Fallback only if no leads discovered
+  // If zero leads discovered, return empty to prevent injecting fake accounts
+  if (rawLeads.length === 0) {
+    return [];
   }
 
   // 4. Enrich each lead with AI Qualification & Tailored Social Connect Notes

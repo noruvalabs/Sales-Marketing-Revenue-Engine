@@ -24,27 +24,17 @@ export interface AutopilotConfig {
 }
 
 let autopilotConfig: AutopilotConfig = {
-  enabled: true, // Default to true for solo founder
+  enabled: false,
   minScoreToAutoDispatch: 85,
   maxDailyAutoSends: 30,
   targetPillars: ["CLIENT_MEETINGS", "INTERVIEW_COPILOT", "CUSTOMER_SUPPORT", "BILINGUAL_AI"],
   activeSources: ["GOOGLE_SEARCH", "APOLLO", "LINKEDIN", "FACEBOOK"],
   connectionChannel: "OMNICHANNEL",
-  lastRunAt: new Date(Date.now() - 3600000 * 2).toISOString(),
-  nextRunScheduledAt: new Date(Date.now() + 3600000 * 4).toISOString(),
+  lastRunAt: null,
+  nextRunScheduledAt: null,
 };
 
-let autopilotLogs: AutopilotLogEntry[] = [
-  {
-    id: "log-1",
-    timestamp: new Date(Date.now() - 3600000 * 2).toISOString(),
-    summary: "Autopilot discovered 4 high-fit accounts from Google Search & Apollo. 3 scored ≥ 85 and were auto-connected via Omni-Channel (Email + LinkedIn).",
-    discoveredCount: 4,
-    autoDispatchedCount: 3,
-    sourcesUsed: ["APOLLO", "GOOGLE_SEARCH", "LINKEDIN"],
-    companies: ["Ramp Financial (Score 94)", "BairesDev (Score 92)", "Front App (Score 89)"],
-  },
-];
+let autopilotLogs: AutopilotLogEntry[] = [];
 
 export function getAutopilotState() {
   return {

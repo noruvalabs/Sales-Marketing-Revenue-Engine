@@ -58,7 +58,7 @@ export async function POST(req: Request) {
 
       // Upsert to DB if PostgreSQL is reachable
       try {
-        await prisma.company.upsert({
+        const savedCompany = await prisma.company.upsert({
           where: { domain: companyRecord.domain },
           update: {
             icpScore: companyRecord.icpScore,
@@ -76,13 +76,52 @@ export async function POST(req: Request) {
             icpScoreReason: companyRecord.icpScoreReason,
             recommendedPillar: companyRecord.recommendedPillar as any,
             status: companyRecord.status as any,
+            contacts: {
+              create: [
+                {
+                  firstName: companyRecord.contacts[0].firstName,
+                  lastName: companyRecord.contacts[0].lastName,
+                  title: companyRecord.contacts[0].title,
+                  email: companyRecord.contacts[0].email,
+                  outreachDrafts: {
+                    create: [
+                      {
+                        subject: companyRecord.draft.subject,
+                        body: companyRecord.draft.body,
+                        status: "PENDING_APPROVAL",
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+            deals: {
+              create: [
+                {
+                  stage: "QUALIFIED_LEAD",
+                  valueMrr: companyRecord.deal.valueMrr,
+                },
+              ],
+            },
+          },
+          include: {
+            contacts: {
+              include: {
+                outreachDrafts: true,
+              },
+            },
+            deals: true,
           },
         });
-      } catch (err) {
-        // Fallback gracefully to memory
-      }
 
-      insertedLeads.push(companyRecord);
+        insertedLeads.push({
+          ...savedCompany,
+          draft: savedCompany.contacts?.[0]?.outreachDrafts?.[0] || companyRecord.draft,
+          deal: savedCompany.deals?.[0] || companyRecord.deal,
+        });
+      } catch (err) {
+        insertedLeads.push(companyRecord);
+      }
     }
 
     return NextResponse.json({

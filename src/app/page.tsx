@@ -104,12 +104,12 @@ export default function Dashboard() {
   const [formData, setFormData] = useState({
     name: "",
     domain: "",
-    industry: "B2B SaaS",
-    size: "20-50",
-    hiringSignals: "Hiring 3 Remote SDRs & Account Executives",
-    contactName: "Alex Mercer",
-    contactEmail: "alex@targetco.com",
-    contactTitle: "VP of Sales",
+    industry: "",
+    size: "",
+    hiringSignals: "",
+    contactName: "",
+    contactEmail: "",
+    contactTitle: "",
   });
 
   // Automated Multi-Source Discovery State
@@ -126,7 +126,7 @@ Loom Video,loom.com,"Hiring 6 Remote Sales SDRs",Vinay Hiremath,vinay@loom.com,C
 Turing AI,turing.com,"Hiring 15 Technical Screeners",Jonathan Siddharth,jonathan@turing.com,CEO,Tech Staffing
 Ramp Card,ramp.com,"Hiring 10 Account Executives",Colin Kennedy,colin@ramp.com,Chief Business Officer,Fintech SaaS`;
 
-  const [csvInput, setCsvInput] = useState(sampleCSV);
+  const [csvInput, setCsvInput] = useState("");
 
   // Suppression Form State
   const [suppressionInput, setSuppressionInput] = useState({
@@ -137,7 +137,7 @@ Ramp Card,ramp.com,"Hiring 10 Account Executives",Colin Kennedy,colin@ramp.com,C
   // Reply Simulator Form State
   const [simulatorInput, setSimulatorInput] = useState({
     selectedLeadId: "",
-    customReply: "Hi! This timing is perfect—we just hired 4 new reps and ramping them is brutal. Can we do a 15-minute call Thursday morning?",
+    customReply: "",
   });
 
   const fetchLeads = async () => {
