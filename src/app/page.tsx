@@ -47,10 +47,9 @@ import {
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<
-    "overview" | "autopilot" | "discovery" | "approvals" | "conversations" | "pipeline" | "suppression" | "revenue"
+    "overview" | "autopilot" | "discovery" | "approvals" | "conversations" | "pipeline" | "suppression"
   >("overview");
   const [discoveryMode, setDiscoveryMode] = useState<"auto" | "csv" | "manual">("auto");
-  const [killSwitchActive, setKillSwitchActive] = useState(false);
   const [companies, setCompanies] = useState<any[]>([]);
   const [suppressionList, setSuppressionList] = useState<any[]>([]);
   const [conversations, setConversations] = useState<any[]>([]);
@@ -62,14 +61,13 @@ export default function Dashboard() {
     ltv: number;
     ledger: any[];
   }>({
-    mrr: 600,
-    arr: 7200,
-    paidCustomersCount: 1,
+    mrr: 0,
+    arr: 0,
+    paidCustomersCount: 0,
     cac: "0.00",
-    ltv: 8400,
+    ltv: 0,
     ledger: [],
   });
-  const [healthProfiles, setHealthProfiles] = useState<any[]>([]);
   const [autopilotState, setAutopilotState] = useState<{
     config: {
       enabled: boolean;
@@ -96,8 +94,6 @@ export default function Dashboard() {
   const [bulkProcessing, setBulkProcessing] = useState(false);
   const [runningAutopilot, setRunningAutopilot] = useState(false);
   const [sendingDraftId, setSendingDraftId] = useState<string | null>(null);
-  const [simulatingReply, setSimulatingReply] = useState(false);
-  const [convertingCompanyId, setConvertingCompanyId] = useState<string | null>(null);
   const [dispatchMessage, setDispatchMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
   // Manual Form State
@@ -137,21 +133,12 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
     reason: "Competitor or manual opt-out",
   });
 
-  // Reply Simulator Form State
-  const [simulatorInput, setSimulatorInput] = useState({
-    selectedLeadId: "",
-    customReply: "",
-  });
-
   const fetchLeads = async () => {
     try {
       const res = await fetch("/api/leads");
       const data = await res.json();
       if (data.companies) {
         setCompanies(data.companies);
-        if (data.companies.length > 0 && !simulatorInput.selectedLeadId) {
-          setSimulatorInput((prev) => ({ ...prev, selectedLeadId: data.companies[0].id }));
-        }
       }
     } catch (err) {
       console.error("Failed to load leads", err);
@@ -190,9 +177,6 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
       const data = await res.json();
       if (data.metrics) {
         setRevenueData(data.metrics);
-      }
-      if (data.healthProfiles) {
-        setHealthProfiles(data.healthProfiles);
       }
     } catch (err) {
       console.error("Failed to load revenue", err);
@@ -438,102 +422,6 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
     }
   };
 
-  const handleSimulateReply = async (presetText?: string) => {
-    const textToSubmit = presetText || simulatorInput.customReply;
-    if (!textToSubmit) return;
-
-    const lead = companies.find((c) => c.id === simulatorInput.selectedLeadId) || companies[0];
-    const contact = lead?.contacts?.[0] || { firstName: "Prospect", lastName: "Lead", email: "prospect@example.com" };
-
-    setSimulatingReply(true);
-    try {
-      const res = await fetch("/api/inbound/reply", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: contact.email,
-          prospectName: `${contact.firstName} ${contact.lastName}`,
-          companyName: lead?.name || "Target Corp",
-          messageText: textToSubmit,
-        }),
-      });
-
-      const data = await res.json();
-      if (data.success && data.conversation) {
-        setConversations((prev) => [data.conversation, ...prev]);
-
-        if (data.classification?.intent === "INTERESTED") {
-          setCompanies((prev) =>
-            prev.map((item) => {
-              if (item.id === lead?.id) {
-                return {
-                  ...item,
-                  deal: { ...item.deal, stage: "MEETING_BOOKED" },
-                };
-              }
-              return item;
-            })
-          );
-          setDispatchMessage({
-            text: `🔥 High-Intent Lead Detected! Deal promoted to "Meeting Booked" and Slack notification triggered.`,
-            type: "success",
-          });
-        }
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setSimulatingReply(false);
-    }
-  };
-
-  const handleSimulatePayment = async (company: any) => {
-    setConvertingCompanyId(company.id);
-    const mrrAmount = company.deal?.valueMrr || 500;
-
-    try {
-      const res = await fetch("/api/revenue", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          companyId: company.id,
-          companyName: company.name,
-          domain: company.domain,
-          amountMrr: mrrAmount,
-          pillar: company.recommendedPillar || "CLIENT_MEETINGS",
-        }),
-      });
-
-      const data = await res.json();
-      if (data.success) {
-        setCompanies((prev) =>
-          prev.map((item) => {
-            if (item.id === company.id) {
-              return {
-                ...item,
-                deal: { ...item.deal, stage: "WON_PAID", valueMrr: mrrAmount },
-              };
-            }
-            return item;
-          })
-        );
-
-        if (data.metrics) {
-          setRevenueData(data.metrics);
-        }
-
-        setDispatchMessage({
-          text: `🎉 Payment Confirmed via Stripe Sync! Added +$${mrrAmount}/mo to MRR ($${(mrrAmount * 12).toLocaleString()}/yr ARR).`,
-          type: "success",
-        });
-      }
-    } catch (err: any) {
-      console.error(err);
-    } finally {
-      setConvertingCompanyId(null);
-    }
-  };
-
   const handleAddSuppression = async (e: React.FormEvent) => {
     e.preventDefault();
     const val = suppressionInput.emailOrDomain.trim();
@@ -577,7 +465,7 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
 
   return (
     <div className="min-h-screen bg-[#07111f] text-slate-100 flex flex-col font-sans">
-      {/* Top Navigation Bar with Autopilot & Kill Switch */}
+      {/* Top Navigation Bar */}
       <header className="border-b border-slate-800/80 bg-[#0c1829]/80 backdrop-blur-md sticky top-0 z-50 px-6 py-3 flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-[#34d399] to-[#7dd3fc] flex items-center justify-center font-bold text-slate-950 text-sm shadow-lg shadow-[#34d399]/20">
@@ -608,61 +496,38 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
             <Bot className={`w-4 h-4 ${autopilotState.config.enabled ? "text-emerald-400 animate-pulse" : "text-slate-500"}`} />
             <span>
               {autopilotState.config.enabled
-                ? "AUTOPILOT: ACTIVE (Score ≥ 85)"
-                : "AUTOPILOT: PAUSED"}
+                ? "Autopilot: On"
+                : "Autopilot: Off"}
             </span>
           </button>
 
-          {/* AI Tier Badge */}
-          <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-300">
-            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-            <span>Gemini AI (Free Tier)</span>
-          </div>
-
-          {/* Kill Switch */}
-          <button
-            onClick={() => setKillSwitchActive(!killSwitchActive)}
-            className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              killSwitchActive
-                ? "bg-rose-500 text-white shadow-lg shadow-rose-500/30"
-                : "bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <ShieldCheck className="w-4 h-4" />
-            <span>{killSwitchActive ? "KILL SWITCH: ACTIVE" : "Safety: Normal"}</span>
-          </button>
         </div>
       </header>
 
       {/* Main Tabs Navigation */}
       <div className="border-b border-slate-800/60 bg-[#091424] px-6 flex space-x-1 overflow-x-auto">
         {[
-          { id: "overview", label: "Executive Overview", icon: TrendingUp },
-          { id: "autopilot", label: "Autopilot Agent (Hands-Free)", icon: Bot, highlight: true },
-          { id: "discovery", label: "Lead Discovery & Scoring", icon: Search },
+          { id: "overview", label: "Overview", icon: TrendingUp },
+          { id: "autopilot", label: "Autopilot", icon: Bot, highlight: true },
+          { id: "discovery", label: "Discovery", icon: Search },
           {
             id: "approvals",
-            label: "Human Review Cockpit",
+            label: "Approvals",
             icon: FileText,
             badge: pendingDrafts.length > 0 ? pendingDrafts.length : undefined,
           },
           {
             id: "conversations",
-            label: "Conversations & Inbound",
+            label: "Replies",
             icon: MessageSquare,
             badge: conversations.length > 0 ? conversations.length : undefined,
           },
-          { id: "pipeline", label: "CRM Deal Pipeline", icon: Layers },
+          { id: "pipeline", label: "Pipeline", icon: Layers },
           {
             id: "suppression",
-            label: "Suppression & Compliance",
+            label: "Suppression",
             icon: Ban,
             badge: suppressionList.length > 0 ? suppressionList.length : undefined,
-          },
-          {
-            id: "revenue",
-            label: `Revenue Attribution ($${revenueData.mrr}/mo)`,
-            icon: DollarSign,
           },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -727,11 +592,11 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
                   <div className="flex items-center space-x-2.5">
                     <span className="w-3 h-3 rounded-full bg-emerald-400 animate-ping"></span>
                     <h2 className="text-lg font-bold text-white flex items-center space-x-2">
-                      <span>Autonomous AI Growth Agent (Full-Time SDR)</span>
+                      <span>Autopilot</span>
                     </h2>
                   </div>
                   <p className="text-xs text-slate-400 mt-1">
-                    Operating without human commands: Finds leads, qualifies hiring pain points, and auto-dispatches outreach for scores &ge; {autopilotState.config.minScoreToAutoDispatch}.
+                    Finds and scores leads. Auto-send only for verified emails with score &ge; {autopilotState.config.minScoreToAutoDispatch} — everything else waits for your approval.
                   </p>
                 </div>
 
@@ -755,12 +620,12 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
                     {runningAutopilot ? (
                       <>
                         <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span>Executing Autonomous Cycle...</span>
+                        <span>Running...</span>
                       </>
                     ) : (
                       <>
                         <Play className="w-4 h-4 fill-slate-950" />
-                        <span>Run Autopilot Cycle Now</span>
+                        <span>Run cycle now</span>
                       </>
                     )}
                   </button>
@@ -774,7 +639,7 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
                   <div className="text-xl font-bold text-emerald-400 mt-1">
                     {autopilotState.config.enabled ? "Fully Autonomous" : "Paused"}
                   </div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">No marketing team needed</div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">Approval mode when off</div>
                 </div>
 
                 <div className="p-4 rounded-xl bg-slate-900 border border-slate-800">
@@ -793,11 +658,6 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
                   <div className="text-[11px] text-slate-500 mt-0.5">Protects domain reputation</div>
                 </div>
 
-                <div className="p-4 rounded-xl bg-slate-900 border border-slate-800">
-                  <div className="text-xs text-slate-400 font-medium">Your Only Daily Job</div>
-                  <div className="text-xl font-bold text-[#7dd3fc] mt-1">Attend Demos</div>
-                  <div className="text-[11px] text-slate-400 mt-0.5">Alerted on Slack & Calendar</div>
-                </div>
               </div>
 
               {/* Multi-Source Radar & Channels */}
@@ -874,9 +734,9 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
                 <div>
                   <h3 className="text-sm font-semibold text-white flex items-center space-x-2">
                     <Activity className="w-4 h-4 text-emerald-400" />
-                    <span>Autopilot Execution History & Activity Stream</span>
+                    <span>Recent runs</span>
                   </h3>
-                  <p className="text-xs text-slate-400">Verifiable trace of autonomous discovery, scoring, and auto-dispatches</p>
+                  <p className="text-xs text-slate-400">Log of past autopilot runs</p>
                 </div>
               </div>
 
@@ -918,76 +778,48 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-5 shadow-sm">
                 <div className="flex items-center justify-between text-slate-400 text-xs font-medium mb-2">
-                  <span>DISCOVERED PROSPECTS</span>
+                  <span>LEADS</span>
                   <Building2 className="w-4 h-4 text-[#7dd3fc]" />
                 </div>
                 <div className="text-2xl font-bold text-white">{companies.length}</div>
-                <div className="text-[11px] text-emerald-400 mt-1">100% deduplicated</div>
               </div>
 
               <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-5 shadow-sm">
                 <div className="flex items-center justify-between text-slate-400 text-xs font-medium mb-2">
-                  <span>QUALIFIED LEADS (ICP &ge; 70)</span>
+                  <span>QUALIFIED (SCORE &ge; 70)</span>
                   <Sparkles className="w-4 h-4 text-[#34d399]" />
                 </div>
                 <div className="text-2xl font-bold text-emerald-400">{qualifiedLeads.length}</div>
-                <div className="text-[11px] text-slate-400 mt-1">Explainable AI Scoring</div>
               </div>
 
               <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-5 shadow-sm">
                 <div className="flex items-center justify-between text-slate-400 text-xs font-medium mb-2">
-                  <span>VERIFIED RECURRING REVENUE (MRR)</span>
+                  <span>MRR (STRIPE)</span>
                   <DollarSign className="w-4 h-4 text-emerald-400" />
                 </div>
                 <div className="text-2xl font-bold text-emerald-400">${revenueData.mrr.toLocaleString()} / mo</div>
-                <div className="text-[11px] text-slate-400 mt-1">${revenueData.arr.toLocaleString()} ARR from Stripe</div>
+                <div className="text-[11px] text-slate-400 mt-1">{revenueData.mrr > 0 ? `$${revenueData.arr.toLocaleString()} ARR` : "No payments yet"}</div>
               </div>
 
               <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-5 shadow-sm">
                 <div className="flex items-center justify-between text-slate-400 text-xs font-medium mb-2">
-                  <span>ACTIVE PAYING CUSTOMERS</span>
-                  <CreditCard className="w-4 h-4 text-sky-400" />
+                  <span>PENDING APPROVALS</span>
+                  <FileText className="w-4 h-4 text-amber-400" />
                 </div>
-                <div className="text-2xl font-bold text-white">{revenueData.paidCustomersCount}</div>
-                <div className="text-[11px] text-emerald-400 mt-1">CAC: ${revenueData.cac} ($0 Ad Spend)</div>
-              </div>
-            </div>
-
-            {/* Strategic Workflow Flowchart */}
-            <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-6">
-              <h3 className="text-sm font-semibold text-slate-200 mb-4 flex items-center space-x-2">
-                <Zap className="w-4 h-4 text-[#34d399]" />
-                <span>Autonomous Lifecycle State Engine (All 6 Phases Active)</span>
-              </h3>
-              <div className="grid grid-cols-2 md:grid-cols-6 gap-3 text-center">
-                {[
-                  { step: "1. Discover", desc: "Auto AI & CSV", status: "Active" },
-                  { step: "2. Qualify", desc: "0-100 ICP Scoring", status: "Active" },
-                  { step: "3. Review", desc: "Human Sign-off", status: "Active" },
-                  { step: "4. Dispatch", desc: "Safe Email Delivery", status: "Active" },
-                  { step: "5. Reply AI", desc: "Intent & Slack Alert", status: "Active" },
-                  { step: "6. Retain", desc: "Stripe Sync & MRR", status: "Active" },
-                ].map((item, i) => (
-                  <div key={i} className="p-3 rounded-lg bg-slate-900/60 border border-slate-800">
-                    <div className="text-xs font-bold text-[#7dd3fc]">{item.step}</div>
-                    <div className="text-[11px] text-slate-400 mt-0.5">{item.desc}</div>
-                    <span className="inline-block mt-2 text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-medium">
-                      {item.status}
-                    </span>
-                  </div>
-                ))}
+                <div className="text-2xl font-bold text-white">{pendingDrafts.length}</div>
+                <div className="text-[11px] text-slate-400 mt-1">Drafts waiting for your review</div>
               </div>
             </div>
 
             {/* High Fit Prospects Ready for Action */}
             <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-semibold text-slate-200">High-Fit Prospects (Score &ge; 70)</h3>
+                <h3 className="text-sm font-semibold text-slate-200">Top leads</h3>
                 <button
                   onClick={() => setActiveTab("discovery")}
                   className="text-xs text-[#34d399] hover:underline flex items-center"
                 >
-                  <span>Ingest New Prospect</span>
+                  <span>Add lead</span>
                   <ChevronRight className="w-3.5 h-3.5 ml-1" />
                 </button>
               </div>
@@ -1037,16 +869,15 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
                           </span>
                         </td>
                         <td className="py-3 px-3 text-right space-x-1.5">
-                          {c.deal?.stage !== "WON_PAID" ? (
-                            <button
-                              onClick={() => handleSimulatePayment(c)}
-                              disabled={convertingCompanyId === c.id}
-                              className="text-xs bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 px-2 py-1 rounded border border-emerald-500/30 font-medium"
-                            >
-                              {convertingCompanyId === c.id ? "Processing..." : "Stripe Pay $500"}
-                            </button>
+                          {c.deal?.stage === "WON_PAID" ? (
+                            <span className="text-[11px] text-emerald-400 font-semibold">Paid customer</span>
                           ) : (
-                            <span className="text-[11px] text-emerald-400 font-semibold">Active Customer ✓</span>
+                            <button
+                              onClick={() => setActiveTab("approvals")}
+                              className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2 py-1 rounded border border-slate-700 font-medium"
+                            >
+                              Review
+                            </button>
                           )}
                         </td>
                       </tr>
@@ -1356,7 +1187,7 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="text-sm font-semibold text-white">Scored Leads Database</h3>
-                    <p className="text-xs text-slate-400">All discovered and qualified B2B accounts with explainable scoring</p>
+                    <p className="text-xs text-slate-400">All leads with their scores</p>
                   </div>
                   <span className="text-xs bg-slate-800 text-slate-300 px-2.5 py-1 rounded-full font-mono">
                     {companies.length} records
@@ -1448,10 +1279,10 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
               <div>
                 <h3 className="text-base font-bold text-white flex items-center space-x-2">
                   <ShieldCheck className="w-5 h-5 text-[#34d399]" />
-                  <span>Human-in-the-Loop Review & Dispatch Cockpit</span>
+                  <span>Approvals</span>
                 </h3>
                 <p className="text-xs text-slate-400">
-                  Every outbound message requires explicit human approval unless Autopilot Agent is active.
+                  Nothing is sent without your approval, unless Autopilot is on.
                 </p>
               </div>
               <div className="flex space-x-2">
@@ -1599,107 +1430,11 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
 
         {/* TAB 4: CONVERSATIONS & INBOUND INTELLIGENCE */}
         {activeTab === "conversations" && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-6 lg:col-span-1 space-y-4">
-              <div className="flex items-center space-x-2 text-white font-semibold text-sm">
-                <Flame className="w-4 h-4 text-amber-400" />
-                <span>Simulate Prospect Reply</span>
-              </div>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Test how the Conversation Agent reads incoming replies, categorizes buying intent, notifies Slack, and drafts responses.
-              </p>
-
-              <div className="space-y-3 text-xs">
-                <div>
-                  <label className="block text-slate-300 font-medium mb-1">Target Prospect</label>
-                  <select
-                    value={simulatorInput.selectedLeadId}
-                    onChange={(e) => setSimulatorInput({ ...simulatorInput, selectedLeadId: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-[#34d399]"
-                  >
-                    {companies.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} — {c.contacts?.[0]?.firstName} ({c.contacts?.[0]?.email})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-slate-300 font-medium mb-1">Quick Presets</label>
-                  <div className="flex flex-col space-y-1.5">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleSimulateReply(
-                          "Hi! This timing is perfect—we just hired 4 new reps and ramping them is brutal. Can we do a 15-minute call Thursday morning?"
-                        )
-                      }
-                      className="text-left px-2.5 py-1.5 rounded bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-emerald-500/20 transition-colors"
-                    >
-                      🔥 Preset: "Interested / Book 15-min call"
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleSimulateReply(
-                          "We already use Gong and Otter.ai across the team, how are you different and why switch?"
-                        )
-                      }
-                      className="text-left px-2.5 py-1.5 rounded bg-slate-900 hover:bg-slate-800 text-sky-400 border border-sky-500/20 transition-colors"
-                    >
-                      💡 Preset: "Competitor objection (Gong / Otter)"
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleSimulateReply(
-                          "Please unsubscribe me and remove our company from your contact list immediately."
-                        )
-                      }
-                      className="text-left px-2.5 py-1.5 rounded bg-slate-900 hover:bg-slate-800 text-rose-400 border border-rose-500/20 transition-colors"
-                    >
-                      🛑 Preset: "Unsubscribe / Opt out"
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-slate-300 font-medium mb-1">Custom Reply Text</label>
-                  <textarea
-                    rows={4}
-                    value={simulatorInput.customReply}
-                    onChange={(e) => setSimulatorInput({ ...simulatorInput, customReply: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-[#34d399]"
-                    placeholder="Type what the prospect wrote..."
-                  />
-                </div>
-
-                <button
-                  type="button"
-                  disabled={simulatingReply}
-                  onClick={() => handleSimulateReply()}
-                  className="w-full bg-[#34d399] hover:bg-[#2fc28c] text-slate-950 font-bold py-2.5 rounded-lg flex items-center justify-center space-x-2 transition-all shadow-md shadow-[#34d399]/20"
-                >
-                  {simulatingReply ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      <span>Classifying Reply & Alerting Slack...</span>
-                    </>
-                  ) : (
-                    <>
-                      <MessageSquare className="w-4 h-4" />
-                      <span>Simulate Inbound Ingestion</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-6 lg:col-span-2 space-y-4">
+          <div>
+            <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-6 space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-semibold text-white">Conversation Inbox & Intelligence Feed</h3>
+                  <h3 className="text-sm font-semibold text-white">Replies</h3>
                   <p className="text-xs text-slate-400">Classified replies with sentiment and recommended responses</p>
                 </div>
                 <span className="text-xs bg-slate-800 text-slate-300 px-2.5 py-1 rounded-full font-mono">
@@ -1798,8 +1533,7 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-base font-bold text-white">B2B Deal Pipeline & Conversion Funnel</h3>
-                <p className="text-xs text-slate-400">Tracking every prospect from Qualified Lead to Won (Paid MRR)</p>
+                <h3 className="text-base font-bold text-white">Pipeline</h3>
               </div>
               <div className="text-xs text-emerald-400 font-bold">
                 Total Pipeline Value: ${totalPipelineMrr.toLocaleString()} / mo
@@ -1835,16 +1569,6 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
                             ${c.deal?.valueMrr || 500} / mo
                           </div>
 
-                          {col.stage !== "WON_PAID" && (
-                            <button
-                              onClick={() => handleSimulatePayment(c)}
-                              disabled={convertingCompanyId === c.id}
-                              className="w-full mt-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 py-1.5 rounded text-[11px] font-semibold transition-colors flex items-center justify-center space-x-1"
-                            >
-                              <CreditCard className="w-3 h-3" />
-                              <span>{convertingCompanyId === c.id ? "Syncing Stripe..." : "Simulate Paid ($500/mo)"}</span>
-                            </button>
-                          )}
                         </div>
                       ))}
                       {dealsInCol.length === 0 && (
@@ -1867,7 +1591,7 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
                 <span>Add Suppression Rule</span>
               </div>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Add an email address or an entire company domain to block all outbound messages. This guarantees CAN-SPAM and GDPR compliance.
+                Blocked emails and domains never receive outreach.
               </p>
 
               <form onSubmit={handleAddSuppression} className="space-y-3 text-xs">
@@ -1947,146 +1671,6 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
         )}
 
         {/* TAB 7: REVENUE ATTRIBUTION & CUSTOMER RETENTION */}
-        {activeTab === "revenue" && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-5 shadow-sm">
-                <div className="flex items-center justify-between text-slate-400 text-xs font-medium mb-2">
-                  <span>VERIFIED RECURRING (MRR)</span>
-                  <DollarSign className="w-4 h-4 text-emerald-400" />
-                </div>
-                <div className="text-2xl font-bold text-emerald-400">${revenueData.mrr.toLocaleString()} / mo</div>
-                <div className="text-[11px] text-slate-400 mt-1">Confirmed Stripe transactions</div>
-              </div>
-
-              <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-5 shadow-sm">
-                <div className="flex items-center justify-between text-slate-400 text-xs font-medium mb-2">
-                  <span>ANNUAL RUN-RATE (ARR)</span>
-                  <TrendingUp className="w-4 h-4 text-[#7dd3fc]" />
-                </div>
-                <div className="text-2xl font-bold text-white">${revenueData.arr.toLocaleString()} / yr</div>
-                <div className="text-[11px] text-slate-400 mt-1">Based on active subscriptions</div>
-              </div>
-
-              <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-5 shadow-sm">
-                <div className="flex items-center justify-between text-slate-400 text-xs font-medium mb-2">
-                  <span>CUSTOMER ACQUISITION COST</span>
-                  <CreditCard className="w-4 h-4 text-purple-400" />
-                </div>
-                <div className="text-2xl font-bold text-white">${revenueData.cac}</div>
-                <div className="text-[11px] text-emerald-400 mt-1">$0 Ad Spend (Organic Engine)</div>
-              </div>
-
-              <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-5 shadow-sm">
-                <div className="flex items-center justify-between text-slate-400 text-xs font-medium mb-2">
-                  <span>ESTIMATED CUSTOMER LTV</span>
-                  <Sparkles className="w-4 h-4 text-amber-400" />
-                </div>
-                <div className="text-2xl font-bold text-white">${revenueData.ltv.toLocaleString()}</div>
-                <div className="text-[11px] text-slate-400 mt-1">14-month SaaS benchmark</div>
-              </div>
-            </div>
-
-            {/* Customer Retention & Account Health Agent */}
-            <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold text-white flex items-center space-x-2">
-                    <HeartPulse className="w-4 h-4 text-emerald-400" />
-                    <span>Customer Growth & Retention Agent</span>
-                  </h3>
-                  <p className="text-xs text-slate-400">Monitoring post-sale product activation, usage health, and upsell triggers</p>
-                </div>
-                <span className="text-xs bg-slate-800 text-slate-300 px-2.5 py-1 rounded-full font-mono">
-                  {healthProfiles.length} active customer accounts
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {healthProfiles.map((hp) => (
-                  <div
-                    key={hp.id}
-                    className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-3"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="font-bold text-white text-sm">{hp.companyName}</div>
-                        <div className="text-slate-400 text-xs font-mono">{hp.domain}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xs font-bold text-emerald-400">${hp.mrr} / mo</div>
-                        <span
-                          className={`inline-block mt-0.5 text-[10px] font-bold px-2 py-0.5 rounded ${
-                            hp.status === "EXPANSION_OPPORTUNITY"
-                              ? "bg-purple-500/10 text-purple-400 border border-purple-500/30"
-                              : hp.status === "AT_RISK"
-                              ? "bg-rose-500/10 text-rose-400 border border-rose-500/30"
-                              : "bg-emerald-500/10 text-emerald-400"
-                          }`}
-                        >
-                          {hp.status.replace("_", " ")}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 text-xs bg-slate-950/60 p-2.5 rounded border border-slate-800/80">
-                      <div>
-                        <span className="text-slate-500 text-[11px]">Health Score:</span>
-                        <div className="font-bold text-white">{hp.healthScore}/100</div>
-                      </div>
-                      <div>
-                        <span className="text-slate-500 text-[11px]">Calls Assisted:</span>
-                        <div className="font-bold text-[#7dd3fc]">{hp.callsAssistedThisMonth} this month</div>
-                      </div>
-                    </div>
-
-                    <div className="text-[11px] text-slate-300 bg-[#07111f] p-2.5 rounded border border-slate-800/60">
-                      <span className="text-[#34d399] font-semibold">Proactive AI Action:</span> {hp.recommendedAction}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Verified Revenue Ledger */}
-            <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold text-white">Verified Revenue Ledger (Stripe Synchronized)</h3>
-                  <p className="text-xs text-slate-400">Auditable transaction log of paid B2B software subscriptions</p>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                {revenueData.ledger.map((item) => (
-                  <div
-                    key={item.id}
-                    className="p-3 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-between text-xs"
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center justify-center font-bold">
-                        $
-                      </div>
-                      <div>
-                        <div className="font-bold text-white">{item.companyName}</div>
-                        <div className="text-[11px] text-slate-500 font-mono">
-                          Stripe ID: {item.stripeInvoiceId} • Pillar: {item.pillar}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="text-right">
-                      <div className="text-sm font-bold text-emerald-400">+${item.amountMrr}/mo</div>
-                      <div className="text-[10px] text-slate-500 font-mono">
-                        {new Date(item.timestamp).toLocaleDateString()}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
       </main>
     </div>
   );
