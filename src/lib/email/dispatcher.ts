@@ -79,9 +79,50 @@ Noruva AI (ai.noruvalabs.com) | Real-time AI Meeting & Sales Copilot
 You received this personalized message based on Noruva's B2B research for ${companyName}.
 Opt out anytime: ${unsubscribeUrl}`;
 
-  // 5. Send via Resend API if API Key is configured
+  const fromEmail = process.env.OUTREACH_FROM_EMAIL || process.env.SMTP_USER || "sales@noruvalabs.com";
+
+  // 5. Send via Direct SMTP (Gmail) if configured - ZERO DNS Required!
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
+
+  if (smtpUser && smtpPass && smtpUser.trim() !== "" && smtpPass.trim() !== "") {
+    try {
+      const nodemailer = await import("nodemailer");
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          user: smtpUser,
+          pass: smtpPass.replace(/\s+/g, ""), // clean spaces in app password
+        },
+      });
+
+      const info = await transporter.sendMail({
+        from: `Noruva AI <${fromEmail}>`,
+        to: toEmail,
+        subject,
+        text: compliantBodyText,
+        headers: {
+          "List-Unsubscribe": `<${unsubscribeUrl}>`,
+        },
+      });
+
+      dailySendCount++;
+      return {
+        success: true,
+        messageId: info.messageId,
+        simulated: false,
+      };
+    } catch (smtpErr: any) {
+      console.error("Gmail SMTP dispatch failed:", smtpErr);
+      return {
+        success: false,
+        error: smtpErr.message || "Failed to send email via SMTP",
+      };
+    }
+  }
+
+  // 6. Send via Resend API if API Key is configured
   const resendApiKey = process.env.RESEND_API_KEY;
-  const fromEmail = process.env.OUTREACH_FROM_EMAIL || "sales@noruvalabs.com";
 
   if (resendApiKey && resendApiKey.trim() !== "") {
     try {
