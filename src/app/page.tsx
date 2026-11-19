@@ -116,15 +116,18 @@ export default function Dashboard() {
   const [autoSearchInput, setAutoSearchInput] = useState({
     personaKeyword: "B2B SaaS companies expanding remote sales teams and SDRs",
     pillar: "CLIENT_MEETINGS" as "CLIENT_MEETINGS" | "INTERVIEW_COPILOT" | "CUSTOMER_SUPPORT" | "BILINGUAL_AI",
-    sources: ["GOOGLE_SEARCH", "APOLLO", "LINKEDIN", "FACEBOOK"],
+    sources: ["PROSPEO", "APOLLO", "HUNTER"],
     count: 4,
   });
 
   // Bulk CSV State
+  // FORMAT EXAMPLE ONLY — replace with real leads from a provider export
+  // (Apollo / Prospeo / Hunter). Never guess an email pattern like
+  // first@company.com: guessed emails bounce and burn your domain.
+  // Every imported email still passes the verification gate before sending.
   const sampleCSV = `Company,Domain,HiringSignals,ContactName,ContactEmail,ContactTitle,Industry
-Loom Video,loom.com,"Hiring 6 Remote Sales SDRs",Vinay Hiremath,vinay@loom.com,CTO & Co-founder,Video Communication
-Turing AI,turing.com,"Hiring 15 Technical Screeners",Jonathan Siddharth,jonathan@turing.com,CEO,Tech Staffing
-Ramp Card,ramp.com,"Hiring 10 Account Executives",Colin Kennedy,colin@ramp.com,Chief Business Officer,Fintech SaaS`;
+Example Co,example.com,"Hiring 6 Remote Sales SDRs",Jane Example,jane.example@example.com,VP Sales,SaaS
+Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sample@sample.invalid,Head of Talent,Tech Staffing`;
 
   const [csvInput, setCsvInput] = useState("");
 

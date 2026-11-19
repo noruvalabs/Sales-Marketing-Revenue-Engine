@@ -44,6 +44,8 @@ export async function connectLeadAutonomously(
         subject: lead.qualification.emailDraft.subject,
         body: lead.qualification.emailDraft.body,
         draftId: `auto-outreach-${Date.now()}`,
+        // Autopilot path: hard verification gate, no manual override, ever.
+        emailVerificationStatus: lead.emailVerification || "UNKNOWN",
       });
 
       result.emailDispatched = emailRes.success;
@@ -55,16 +57,20 @@ export async function connectLeadAutonomously(
     }
   }
 
-  // 2. Autonomous LinkedIn / Social Touchpoint
+  // 2. LinkedIn / Social Touchpoint — MANUAL ONLY (v1 honesty fix).
+  // The old code set linkedinConnected = true without doing anything.
+  // LinkedIn automation and scraping violate LinkedIn's ToS and get
+  // accounts restricted (public cases in 2025). So we create a manual
+  // task with a drafted note for a human to send — and report it as a
+  // task, not as a connection.
   if (shouldSendLinkedIn && (lead.linkedinUrl || lead.source === "LINKEDIN")) {
-    result.linkedinConnected = true;
+    result.linkedinConnected = false;
     result.socialNoteSent = lead.socialConnectNote;
 
-    // Log connection touchpoint in audit ledger
     try {
       await prisma.auditLog.create({
         data: {
-          action: "LINKEDIN_OUTREACH_CONNECTED",
+          action: "LINKEDIN_MANUAL_TASK_CREATED",
           entityType: "Contact",
           entityId: lead.domain,
           details: {
@@ -73,6 +79,7 @@ export async function connectLeadAutonomously(
             contactTitle: lead.contactTitle,
             companyName: lead.name,
             channel: "LINKEDIN",
+            note: "Manual task for a human — LinkedIn is never automated by this engine.",
             socialConnectNote: lead.socialConnectNote,
           },
         },
@@ -84,7 +91,7 @@ export async function connectLeadAutonomously(
 
   result.auditMessage = `Connected to ${lead.contactName} (${lead.name}) via ${preferredChannel}. Email: ${
     result.emailDispatched ? "SENT" : "SKIPPED/SIMULATED"
-  }, Social Note: ${result.linkedinConnected ? "QUEUED/SENT" : "N/A"}`;
+  }, LinkedIn: ${result.socialNoteSent ? "MANUAL TASK CREATED (not auto-sent)" : "N/A"}`;
 
   return result;
 }

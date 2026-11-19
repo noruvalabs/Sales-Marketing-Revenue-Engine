@@ -70,6 +70,9 @@ model Company {
   country            String?         @default("Global")
   techStack          String[]
   hiringSignals      String?         // e.g. "Hiring 5 remote sales reps"
+  source             String          @default("MANUAL") // PROSPEO | APOLLO | HUNTER | CSV | MANUAL — a lead must have a real source
+  researchSummary    String?         @db.Text
+  researchEvidenceUrl String?        // source URL behind any personalised claim about this company
   
   // Intelligence & ICP Qualification
   icpScore           Int             @default(0)
@@ -96,6 +99,11 @@ model Contact {
   email          String          @unique
   title          String          // e.g. "Head of Talent", "VP Sales", "CEO"
   linkedinUrl    String?
+  source         String          @default("MANUAL")
+  // Verification gate: VALID | RISKY | INVALID | UNKNOWN. Only VALID may be
+  // auto-sent; RISKY needs a human override for one manual send.
+  emailVerification String       @default("UNKNOWN")
+  emailVerifiedAt   DateTime?
   status         ContactStatus   @default(NEW)
   
   // Relations
@@ -123,8 +131,10 @@ model OutreachDraft {
   contact        Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
   
   stepNumber     Int          @default(1)
+  sendAfterDays  Int          @default(0) // sequence timing: step 1 = 0, step 2 = +3, step 3 = +7
   subject        String
   body           String       @db.Text
+  evidenceUrl    String?      // research source behind the personalisation in this draft
   status         DraftStatus  @default(PENDING_APPROVAL)
   
   approvedAt     DateTime?

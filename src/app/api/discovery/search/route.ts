@@ -1,10 +1,23 @@
 import { NextResponse } from "next/server";
 import { huntMultiSourceLeads, LeadSource } from "@/lib/discovery/multiSourceHunter";
+import { configuredProviders } from "@/lib/discovery/providers";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(req: Request) {
   try {
     const { personaKeyword, pillar, sources, count = 4 } = await req.json();
+
+    // v1: no provider key = no discovery. Say so plainly instead of
+    // returning invented catalog leads (the old behaviour).
+    if (configuredProviders().length === 0) {
+      return NextResponse.json({
+        success: false,
+        configured: false,
+        count: 0,
+        leads: [],
+        error: "No lead provider configured. Add PROSPEO_API_KEY (75 free/month), APOLLO_API_KEY, or HUNTER_API_KEY in .env — or add real leads by CSV / manual entry. Fake catalog discovery was removed in v1.",
+      }, { status: 200 });
+    }
 
     const discovered = await huntMultiSourceLeads({
       personaKeyword: personaKeyword || "B2B SaaS companies hiring remote SDRs and technical interviewers",
@@ -72,6 +85,8 @@ export async function POST(req: Request) {
             size: companyRecord.size,
             country: companyRecord.country,
             hiringSignals: companyRecord.hiringSignals,
+            source: lead.source,
+            researchEvidenceUrl: lead.researchEvidenceUrl,
             icpScore: companyRecord.icpScore,
             icpScoreReason: companyRecord.icpScoreReason,
             recommendedPillar: companyRecord.recommendedPillar as any,
@@ -83,6 +98,9 @@ export async function POST(req: Request) {
                   lastName: companyRecord.contacts[0].lastName,
                   title: companyRecord.contacts[0].title,
                   email: companyRecord.contacts[0].email,
+                  source: lead.source,
+                  emailVerification: lead.emailVerification || "UNKNOWN",
+                  emailVerifiedAt: lead.emailVerification ? new Date() : null,
                   outreachDrafts: {
                     create: [
                       {

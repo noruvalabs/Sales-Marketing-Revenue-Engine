@@ -104,7 +104,7 @@ function fallbackClassifier(prospectName: string, text: string): ClassificationR
       confidence: 95,
       summary: "High buying intent: Prospect expressed interest or requested a meeting/pricing.",
       recommendedAction: "High-Priority Alert: Send calendar link or book 15-min discovery demo.",
-      suggestedReply: `Hi ${firstName},\n\nGlad to hear from you! Would you have 15 minutes this week for a brief walkthrough?\n\nYou can pick any slot that fits your schedule here: https://cal.com/noruva-team/15min\n\nLooking forward to speaking,\nNoruva Team`,
+      suggestedReply: `Hi ${firstName},\n\nGlad to hear from you! Would you have 15 minutes this week for a brief walkthrough?\n\nYou can pick any slot that fits your schedule here: ${process.env.MEETING_BOOKING_URL || "https://cal.com/noruva-team/15min"}\n\nLooking forward to speaking,\nNoruva Team`,
     };
   }
 

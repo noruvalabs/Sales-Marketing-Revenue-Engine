@@ -95,7 +95,16 @@ export async function runAutopilotCycle(customParams?: {
 
   for (const item of discovered) {
     const score = item.qualification.score;
-    const isUltraHighFit = score >= autopilotConfig.minScoreToAutoDispatch;
+    // v1 safety fix: a high score alone NEVER auto-sends. Auto-dispatch
+    // requires ALL of: score >= threshold, email verified VALID, and the
+    // explicit env opt-in AUTOPILOT_ALLOW_AUTO_SEND=true (earn autopilot
+    // per campaign after a human-approved track record — Artisan/Jason
+    // "autonomy dial" pattern). Everything else waits in the approval queue.
+    const autoSendAllowed = process.env.AUTOPILOT_ALLOW_AUTO_SEND === "true";
+    const isUltraHighFit =
+      score >= autopilotConfig.minScoreToAutoDispatch &&
+      item.emailVerification === "VALID" &&
+      autoSendAllowed;
 
     const companyRecord: any = {
       id: `auto-${Date.now()}-${Math.random().toString(36).substring(7)}`,
