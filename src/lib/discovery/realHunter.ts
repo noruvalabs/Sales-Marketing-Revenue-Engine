@@ -1,0 +1,141 @@
+/**
+ * Real lead hunter — waterfall over licensed providers, verification-gated.
+ *
+ * Replaces the old hard-coded catalogs (see finder.ts / multiSourceHunter.ts,
+ * now thin wrappers around this file). Pipeline per lead:
+ *   Prospeo -> Apollo -> Hunter (stop expanding once we have enough)
+ *   -> dedupe by email/domain -> verify email -> drop INVALID
+ *   -> research company (evidence URL) -> Gemini qualify + 3-touch sequence
+ *
+ * With no provider key configured this returns `configured: false` and ZERO
+ * leads, with a clear message. It never falls back to invented data.
+ * Manual / CSV-imported leads remain a valid path — they go through the
+ * same verification gate before anything can be sent.
+ */
+
+import { searchProspeo, searchApollo, searchHunter, configuredProviders, type ProviderLead, type LeadSearchQuery } from "@/lib/discovery/providers";
+import { verifyEmail, type EmailVerificationStatus } from "@/lib/verification/emailVerifier";
+import { researchCompany, type CompanyResearch } from "@/lib/research/companyResearch";
+import { qualifyCompany, type QualificationResult } from "@/lib/ai/qualify";
+import { buildSequence, type SequenceDraft } from "@/lib/ai/sequence";
+
+export interface RealLead {
+  name: string;
+  domain: string;
+  industry: string;
+  size: string;
+  country: string;
+  hiringSignals: string;
+  source: string;
+  sourceUrl?: string;
+  contactName: string;
+  contactEmail: string;
+  contactTitle: string;
+  linkedinUrl?: string;
+  emailVerification: EmailVerificationStatus;
+  emailVerificationReason: string;
+  research: CompanyResearch;
+  qualification: QualificationResult;
+  sequence: SequenceDraft[];
+}
+
+export interface RealHuntResult {
+  configured: boolean;
+  message: string;
+  leads: RealLead[];
+  droppedInvalid: number;
+  providersUsed: string[];
+}
+
+const PILLAR_TITLES: Record<string, string[]> = {
+  CLIENT_MEETINGS: ["VP Sales", "Head of Sales", "Sales Director", "Founder", "CEO"],
+  INTERVIEW_COPILOT: ["Head of Talent", "VP People", "Head of Recruiting", "Engineering Manager", "Founder"],
+  CUSTOMER_SUPPORT: ["VP Customer Support", "Head of Customer Success", "Support Director", "COO"],
+  BILINGUAL_AI: ["Head of Operations", "VP Global Operations", "Founder", "CEO"],
+};
+
+export async function huntRealLeads(params: {
+  personaKeyword?: string;
+  pillar: "CLIENT_MEETINGS" | "INTERVIEW_COPILOT" | "CUSTOMER_SUPPORT" | "BILINGUAL_AI";
+  domains?: string[];
+  count?: number;
+}): Promise<RealHuntResult> {
+  const providers = configuredProviders();
+  if (providers.length === 0) {
+    return {
+      configured: false,
+      message:
+        "No lead provider configured. Add PROSPEO_API_KEY (75 free verified emails/month), APOLLO_API_KEY, or HUNTER_API_KEY in .env — or import real leads by CSV / manual entry. Fake catalog discovery was removed in v1: this engine never invents companies or emails.",
+      leads: [], droppedInvalid: 0, providersUsed: [],
+    };
+  }
+
+  const count = Math.min(params.count || 5, 25);
+  const query: LeadSearchQuery = {
+    titles: PILLAR_TITLES[params.pillar] || PILLAR_TITLES.CLIENT_MEETINGS,
+    keywords: params.personaKeyword || "",
+    domains: params.domains,
+    count,
+  };
+
+  // Waterfall: quality first (Prospeo), then breadth (Apollo), then Hunter
+  // for known domains. Collect until we have ~2x the target (some will fail
+  // verification and be dropped).
+  const raw: ProviderLead[] = [];
+  const providersUsed: string[] = [];
+  if (providers.includes("PROSPEO")) {
+    const r = await searchProspeo(query); providersUsed.push("PROSPEO");
+    raw.push(...r.leads);
+  }
+  if (raw.length < count * 2 && providers.includes("APOLLO")) {
+    const r = await searchApollo(query); providersUsed.push("APOLLO");
+    raw.push(...r.leads);
+  }
+  if (raw.length < count * 2 && providers.includes("HUNTER") && (params.domains?.length || 0) > 0) {
+    const r = await searchHunter(query); providersUsed.push("HUNTER");
+    raw.push(...r.leads);
+  }
+
+  // Dedupe by email, then verify — INVALID leads are dropped, never sent.
+  const seen = new Set<string>();
+  const leads: RealLead[] = [];
+  let droppedInvalid = 0;
+
+  for (const p of raw) {
+    const email = p.contactEmail.toLowerCase().trim();
+    if (!email || seen.has(email)) continue;
+    seen.add(email);
+
+    const verification = await verifyEmail(email);
+    if (verification.status === "INVALID") { droppedInvalid++; continue; }
+
+    const research = await researchCompany(p.domain, p.companyName);
+    const qualification = await qualifyCompany({
+      name: p.companyName, domain: p.domain, industry: p.industry, size: p.size,
+      hiringSignals: research.signals.join("; "), contactName: p.contactName, contactTitle: p.contactTitle,
+    });
+    const sequence = buildSequence({
+      contactName: p.contactName, contactTitle: p.contactTitle, companyName: p.companyName,
+      qualification, research, hiringSignals: research.signals.join("; "),
+    });
+
+    leads.push({
+      name: p.companyName, domain: p.domain, industry: p.industry || "Technology",
+      size: p.size || "Unknown", country: p.country || "Global",
+      hiringSignals: research.signals.join("; ") || "Identified via " + p.source,
+      source: p.source, sourceUrl: p.sourceUrl,
+      contactName: p.contactName, contactEmail: email, contactTitle: p.contactTitle,
+      linkedinUrl: p.linkedinUrl,
+      emailVerification: verification.status, emailVerificationReason: verification.reason,
+      research, qualification, sequence,
+    });
+
+    if (leads.length >= count) break;
+  }
+
+  return {
+    configured: true,
+    message: `Found ${leads.length} real leads via ${providersUsed.join(" + ")} (${droppedInvalid} dropped as invalid emails). Only VALID emails can be auto-sent; RISKY/UNKNOWN wait in the approval queue.`,
+    leads, droppedInvalid, providersUsed,
+  };
+}

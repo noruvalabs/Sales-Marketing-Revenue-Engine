@@ -4,10 +4,24 @@ import { sendOutreachEmail } from "@/lib/email/dispatcher";
 
 export async function POST(req: Request) {
   try {
-    const { draftId, toEmail, toName, companyName, subject, body } = await req.json();
+    const { draftId, toEmail, toName, companyName, subject, body, manualOverride } = await req.json();
 
     if (!toEmail || !subject || !body) {
       return NextResponse.json({ error: "Missing required email dispatch fields." }, { status: 400 });
+    }
+
+    // v1 verification gate: if this draft belongs to a known contact, the
+    // dispatcher receives that contact's verification verdict and blocks
+    // anything that is not VALID (RISKY only with an explicit human
+    // single-send override from the approval UI).
+    let emailVerificationStatus: any = undefined;
+    if (draftId) {
+      try {
+        const draft = await prisma.outreachDraft.findUnique({
+          where: { id: draftId }, include: { contact: true },
+        });
+        if (draft?.contact) emailVerificationStatus = draft.contact.emailVerification || "UNKNOWN";
+      } catch { /* DB unreachable — gate stays unset, simulated mode still safe */ }
     }
 
     // 1. Dispatch Email through the Safe Dispatcher
@@ -18,6 +32,8 @@ export async function POST(req: Request) {
       subject,
       body,
       draftId,
+      emailVerificationStatus,
+      manualOverride: manualOverride === true,
     });
 
     if (!dispatchResult.success) {

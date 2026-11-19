@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { canSendOutreach, type EmailVerificationStatus } from "@/lib/verification/emailVerifier";
 
 export interface SendEmailParams {
   toEmail: string;
@@ -7,6 +8,15 @@ export interface SendEmailParams {
   subject: string;
   body: string;
   draftId?: string;
+  /**
+   * Verification verdict for toEmail. When provided, the hard gate in
+   * emailVerifier applies: only VALID sends (RISKY only with a human's
+   * single-send override). Callers that know the contact should always
+   * pass this — guessed/unverified emails were the old engine's #1 risk.
+   */
+  emailVerificationStatus?: EmailVerificationStatus;
+  /** Human deliberately sending ONE risky email. Never set by autopilot. */
+  manualOverride?: boolean;
 }
 
 export interface SendEmailResult {
@@ -31,6 +41,19 @@ export async function sendOutreachEmail(params: SendEmailParams): Promise<SendEm
       success: false,
       error: "Emergency Kill Switch is active. All outbound dispatch is currently suspended.",
     };
+  }
+
+  // 1b. Verification gate — runs before limits/suppression so a blocked
+  // address never consumes send quota. Enforced only when the caller
+  // supplied a verdict; routes that load the contact from DB do.
+  if (params.emailVerificationStatus !== undefined) {
+    const gate = canSendOutreach({
+      verificationStatus: params.emailVerificationStatus,
+      manualOverride: params.manualOverride,
+    });
+    if (!gate.allowed) {
+      return { success: false, error: `Verification gate: ${gate.reason}` };
+    }
   }
 
   // 2. Check Daily Send Limits (Anti-Spam & Domain Warmup Protection)
@@ -72,10 +95,14 @@ export async function sendOutreachEmail(params: SendEmailParams): Promise<SendEm
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const unsubscribeUrl = `${appUrl}/api/unsubscribe?email=${encodeURIComponent(toEmail)}`;
 
+  // CAN-SPAM has NO B2B exception: a real physical postal address is legally
+  // required in every commercial email. Set COMPANY_PHYSICAL_ADDRESS before
+  // any live send — do not fake one.
+  const physicalAddress = process.env.COMPANY_PHYSICAL_ADDRESS || "";
   const compliantBodyText = `${body}
 
 ---
-Noruva AI (ai.noruvalabs.com) | Real-time AI Meeting & Sales Copilot
+Noruva AI (ai.noruvalabs.com) | Real-time AI Meeting & Sales Copilot${physicalAddress ? `\n${physicalAddress}` : ""}
 You received this personalized message based on Noruva's B2B research for ${companyName}.
 Opt out anytime: ${unsubscribeUrl}`;
 
@@ -122,6 +149,10 @@ Opt out anytime: ${unsubscribeUrl}`;
   }
 
   // 6. Send via Resend API if API Key is configured
+  // WARNING (v1): Resend's Acceptable Use Policy prohibits unsolicited cold
+  // outreach / purchased or scraped lists — account-loss risk. Use Resend
+  // only for opted-in / transactional mail. For cold sequences use a
+  // dedicated outreach domain on Instantly or Smartlead (see docs/REAL_V1.md).
   const resendApiKey = process.env.RESEND_API_KEY;
 
   if (resendApiKey && resendApiKey.trim() !== "") {

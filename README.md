@@ -6,6 +6,8 @@ An autonomous, human-in-the-loop B2B customer acquisition and revenue platform f
 Discover → Research → Qualify → Engage → Convert → Retain → Optimize
 ```
 
+> **v1 — Real Engine (2026-11-19):** Lead discovery is now real (Prospeo / Apollo / Hunter APIs), every email passes a verification gate before sending, outreach is a 3-touch sequence, and the old hard-coded lead catalog with guessed emails has been removed. **Read [docs/REAL_V1.md](docs/REAL_V1.md) before running or deploying** — it covers what changed, the go-live checklist, sending-domain setup, and costs.
+
 ---
 
 ## System Overview
