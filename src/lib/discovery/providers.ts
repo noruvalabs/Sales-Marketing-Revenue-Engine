@@ -27,6 +27,7 @@ export interface ProviderLead {
   linkedinUrl?: string;
   source: LeadProviderName;
   sourceUrl?: string;
+  verified?: boolean;
 }
 
 export interface ProviderResult {
@@ -57,35 +58,97 @@ export async function searchProspeo(query: LeadSearchQuery): Promise<ProviderRes
   const apiKey = process.env.PROSPEO_API_KEY;
   if (!apiKey) return { provider: "PROSPEO", configured: false, leads: [] };
   try {
+    const filters: any = {
+      person_job_title: {
+        include: query.titles && query.titles.length > 0
+          ? query.titles
+          : ["VP Sales", "Head of Sales", "Sales Director", "Founder", "CEO"],
+      },
+      company_industry: {
+        include: ["Technology, Information and Internet", "Software Development"],
+      },
+    };
+    if (query.domains && query.domains.length > 0) {
+      delete filters.company_industry;
+      filters.company_domain = { include: query.domains };
+    }
+
     const res = await fetch("https://api.prospeo.io/search-person", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-KEY": apiKey },
       body: JSON.stringify({
         page: 1,
-        filters: {
-          person_job_title: { include: query.titles || [] },
-          ...(query.keywords ? { person_location_search: query.keywords } : {}),
-        },
+        filters,
       }),
     });
     if (!res.ok) throw new Error(`Prospeo HTTP ${res.status}`);
     const data: any = await res.json();
-    const people: any[] = data?.results || data?.people || [];
-    const leads: ProviderLead[] = people.slice(0, query.count || 10).flatMap((p: any) => {
-      const email = p?.email?.email || p?.email || p?.person?.email;
-      const domain = cleanDomain(p?.company?.domain || p?.domain || (email ? email.split("@")[1] : ""));
-      const name = p?.person?.full_name || p?.full_name || [p?.first_name, p?.last_name].filter(Boolean).join(" ");
-      if (!email || !name || !domain) return [];
-      return [{
-        companyName: p?.company?.name || domain, domain,
-        industry: p?.company?.industry, size: p?.company?.employee_count?.toString(),
-        country: p?.person?.location || p?.company?.location,
-        contactName: name, contactEmail: String(email).toLowerCase(),
-        contactTitle: p?.person?.job_title || p?.job_title || "Decision Maker",
-        linkedinUrl: p?.person?.linkedin_url || p?.linkedin_url,
-        source: "PROSPEO" as const, sourceUrl: p?.person?.linkedin_url,
-      }];
-    });
+    const rawPeople: any[] = data?.results || data?.people || [];
+    const countTarget = query.count || 4;
+    const leads: ProviderLead[] = [];
+
+    for (const p of rawPeople) {
+      if (leads.length >= countTarget) break;
+
+      let email = p?.person?.email?.email || p?.email?.email || p?.email || p?.person?.email;
+      let emailStatus = p?.person?.email?.status || p?.email?.status;
+      let emailRevealed = p?.person?.email?.revealed ?? p?.email?.revealed;
+      let name = p?.person?.full_name || p?.full_name || [p?.person?.first_name || p?.first_name, p?.person?.last_name || p?.last_name].filter(Boolean).join(" ");
+      let domain = cleanDomain(p?.company?.domain || p?.domain || "");
+      let jobTitle = p?.person?.current_job_title || p?.person?.job_title || p?.job_title || "Decision Maker";
+      let companyName = p?.company?.name || domain;
+      let linkedinUrl = p?.person?.linkedin_url || p?.linkedin_url;
+      let industry = p?.company?.industry;
+      let size = p?.company?.employee_count?.toString();
+      let country = p?.person?.location?.country || p?.company?.location?.country;
+
+      // If email is masked (e.g. s********@...) or not revealed, call enrich-person to reveal real email
+      const personId = p?.person?.person_id || p?.person_id;
+      if (personId && (!email || String(email).includes("*") || !emailRevealed)) {
+        try {
+          const enrichRes = await fetch("https://api.prospeo.io/enrich-person", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-KEY": apiKey },
+            body: JSON.stringify({
+              only_verified_email: true,
+              data: { person_id: personId },
+            }),
+          });
+          if (enrichRes.ok) {
+            const enrichData: any = await enrichRes.json();
+            const revealedEmail = enrichData?.person?.email?.email;
+            if (revealedEmail && !revealedEmail.includes("*")) {
+              email = revealedEmail;
+              emailStatus = enrichData?.person?.email?.status;
+              name = enrichData?.person?.full_name || name;
+              jobTitle = enrichData?.person?.current_job_title || jobTitle;
+              companyName = enrichData?.company?.name || companyName;
+              domain = cleanDomain(enrichData?.company?.domain || domain);
+              linkedinUrl = enrichData?.person?.linkedin_url || linkedinUrl;
+            }
+          }
+        } catch (enrichErr) {
+          console.warn("Prospeo enrich error for person:", personId, enrichErr);
+        }
+      }
+
+      if (!email || String(email).includes("*") || !name || !domain) continue;
+
+      leads.push({
+        companyName,
+        domain,
+        industry,
+        size,
+        country,
+        contactName: name,
+        contactEmail: String(email).toLowerCase(),
+        contactTitle: jobTitle,
+        linkedinUrl,
+        source: "PROSPEO" as const,
+        sourceUrl: linkedinUrl,
+        verified: emailStatus === "VERIFIED",
+      });
+    }
     return { provider: "PROSPEO", configured: true, leads };
   } catch (err: any) {
     return { provider: "PROSPEO", configured: true, leads: [], error: err.message };

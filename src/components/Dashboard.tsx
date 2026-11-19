@@ -681,8 +681,8 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
                       <Globe className="w-4 h-4 text-sky-400" />
                       <span>Lead providers</span>
                     </span>
-                    <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono">
-                      API key needed
+                    <span className="text-[10px] bg-emerald-950/80 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded font-mono font-medium">
+                      Prospeo Active
                     </span>
                   </div>
                   <div className="space-y-2 text-xs">

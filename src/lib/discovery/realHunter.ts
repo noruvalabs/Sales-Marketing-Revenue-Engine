@@ -106,7 +106,9 @@ export async function huntRealLeads(params: {
     if (!email || seen.has(email)) continue;
     seen.add(email);
 
-    const verification = await verifyEmail(email);
+    const verification = p.verified
+      ? await verifyEmail(email, "VALID")
+      : await verifyEmail(email);
     if (verification.status === "INVALID") { droppedInvalid++; continue; }
 
     const research = await researchCompany(p.domain, p.companyName);

@@ -80,7 +80,7 @@ export function checkEmailSyntax(email: string): {
  * (cheapest credible verifier, ~$1.99–$4.90 / 1k, 100 free credits).
  * Without a key the result is UNKNOWN — the send gate will block it.
  */
-export async function verifyEmail(email: string): Promise<EmailVerificationResult> {
+export async function verifyEmail(email: string, preVerified?: EmailVerificationStatus): Promise<EmailVerificationResult> {
   const e = (email || "").trim().toLowerCase();
   const now = new Date().toISOString();
   const syntax = checkEmailSyntax(e);
@@ -90,6 +90,19 @@ export async function verifyEmail(email: string): Promise<EmailVerificationResul
       email: e, status: "INVALID", source: "syntax-only", reason: syntax.reason,
       isRoleAccount: syntax.isRoleAccount, isDisposable: syntax.isDisposable,
       isCatchAll: false, checkedAt: now,
+    };
+  }
+
+  if (preVerified === "VALID") {
+    return {
+      email: e,
+      status: "VALID",
+      source: "prospeo-smtp-verified",
+      reason: "SMTP deliverability verified by lead provider",
+      isRoleAccount: syntax.isRoleAccount,
+      isDisposable: syntax.isDisposable,
+      isCatchAll: false,
+      checkedAt: now,
     };
   }
 

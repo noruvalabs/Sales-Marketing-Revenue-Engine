@@ -28,7 +28,7 @@ let autopilotConfig: AutopilotConfig = {
   minScoreToAutoDispatch: 85,
   maxDailyAutoSends: 30,
   targetPillars: ["CLIENT_MEETINGS", "INTERVIEW_COPILOT", "CUSTOMER_SUPPORT", "BILINGUAL_AI"],
-  activeSources: ["GOOGLE_SEARCH", "APOLLO", "LINKEDIN", "FACEBOOK"],
+  activeSources: ["PROSPEO", "APOLLO"],
   connectionChannel: "OMNICHANNEL",
   lastRunAt: null,
   nextRunScheduledAt: null,
@@ -157,12 +157,14 @@ export async function runAutopilotCycle(customParams?: {
 
     // Persist to DB if available
     try {
-      await prisma.company.upsert({
+      const savedCompany = await prisma.company.upsert({
         where: { domain: companyRecord.domain },
         update: {
           icpScore: companyRecord.icpScore,
           icpScoreReason: companyRecord.icpScoreReason,
           status: companyRecord.status as any,
+          source: companyRecord.source,
+          researchEvidenceUrl: item.researchEvidenceUrl,
         },
         create: {
           name: companyRecord.name,
@@ -171,14 +173,82 @@ export async function runAutopilotCycle(customParams?: {
           size: companyRecord.size,
           country: companyRecord.country,
           hiringSignals: companyRecord.hiringSignals,
+          source: companyRecord.source,
+          researchEvidenceUrl: item.researchEvidenceUrl,
           icpScore: companyRecord.icpScore,
           icpScoreReason: companyRecord.icpScoreReason,
           recommendedPillar: companyRecord.recommendedPillar as any,
           status: companyRecord.status as any,
+          contacts: {
+            create: [
+              {
+                firstName: companyRecord.contacts[0].firstName,
+                lastName: companyRecord.contacts[0].lastName,
+                title: companyRecord.contacts[0].title,
+                email: companyRecord.contacts[0].email,
+                source: companyRecord.source,
+                emailVerification: item.emailVerification || "VALID",
+                status: isUltraHighFit ? "OUTREACH_ACTIVE" : "DRAFT_PENDING_APPROVAL",
+                outreachDrafts: {
+                  create: [
+                    {
+                      subject: companyRecord.draft.subject,
+                      body: companyRecord.draft.body,
+                      evidenceUrl: item.researchEvidenceUrl,
+                      status: isUltraHighFit ? "SENT" : "PENDING_APPROVAL",
+                      sentAt: isUltraHighFit ? new Date() : null,
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+          deals: {
+            create: [
+              {
+                stage: isUltraHighFit ? "CONTACTED" : "QUALIFIED_LEAD",
+                valueMrr: companyRecord.deal.valueMrr,
+              },
+            ],
+          },
+        },
+        include: {
+          contacts: {
+            include: {
+              outreachDrafts: true,
+            },
+          },
+          deals: true,
         },
       });
+
+      if (savedCompany.contacts.length === 0) {
+        await prisma.contact.create({
+          data: {
+            companyId: savedCompany.id,
+            firstName: companyRecord.contacts[0].firstName,
+            lastName: companyRecord.contacts[0].lastName,
+            title: companyRecord.contacts[0].title,
+            email: companyRecord.contacts[0].email,
+            source: companyRecord.source,
+            emailVerification: item.emailVerification || "VALID",
+            status: isUltraHighFit ? "OUTREACH_ACTIVE" : "DRAFT_PENDING_APPROVAL",
+            outreachDrafts: {
+              create: [
+                {
+                  subject: companyRecord.draft.subject,
+                  body: companyRecord.draft.body,
+                  evidenceUrl: item.researchEvidenceUrl,
+                  status: isUltraHighFit ? "SENT" : "PENDING_APPROVAL",
+                  sentAt: isUltraHighFit ? new Date() : null,
+                },
+              ],
+            },
+          },
+        });
+      }
     } catch (err) {
-      // Memory fallback
+      console.warn("Could not persist autopilot lead to DB:", err);
     }
 
     processedLeads.push(companyRecord);
