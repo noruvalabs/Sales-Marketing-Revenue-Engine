@@ -46,6 +46,7 @@ import {
 } from "lucide-react";
 
 export default function Dashboard() {
+  const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<
     "overview" | "autopilot" | "discovery" | "approvals" | "conversations" | "pipeline" | "suppression"
   >("overview");
@@ -196,6 +197,7 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
   };
 
   useEffect(() => {
+    setMounted(true);
     fetchLeads();
     fetchSuppressionList();
     fetchConversations();
@@ -463,8 +465,19 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
   const qualifiedLeads = companies.filter((c) => (c.icpScore || 0) >= 70);
   const totalPipelineMrr = companies.reduce((acc, c) => acc + (Number(c.deal?.valueMrr) || 0), 0);
 
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-[#07111f] text-slate-100 flex items-center justify-center font-sans">
+        <div className="flex items-center space-x-3 text-slate-400">
+          <div className="w-5 h-5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm font-medium">Loading Noruva Revenue Engine...</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[#07111f] text-slate-100 flex flex-col font-sans">
+    <div suppressHydrationWarning className="min-h-screen bg-[#07111f] text-slate-100 flex flex-col font-sans">
       {/* Top Navigation Bar */}
       <header className="border-b border-slate-800/80 bg-[#0c1829]/80 backdrop-blur-md sticky top-0 z-50 px-6 py-3 flex items-center justify-between">
         <div className="flex items-center space-x-3">
