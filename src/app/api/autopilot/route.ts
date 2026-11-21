@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
 import { getAutopilotState, updateAutopilotConfig, runAutopilotCycle } from "@/lib/autopilot/engine";
+import { startAutonomousScheduler, getSchedulerStatus } from "@/lib/autopilot/scheduler";
+
+// Ensure scheduler is active whenever server is initialized
+startAutonomousScheduler();
 
 export async function GET() {
   const state = getAutopilotState();
-  return NextResponse.json({ success: true, ...state });
+  const scheduler = getSchedulerStatus();
+  return NextResponse.json({ success: true, ...state, scheduler });
 }
 
 export async function POST(req: Request) {

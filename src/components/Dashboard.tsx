@@ -727,6 +727,16 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
                   <div className="text-[11px] text-slate-500 mt-0.5">Protects domain reputation</div>
                 </div>
 
+                <div className="p-4 rounded-xl bg-slate-900 border border-slate-800">
+                  <div className="text-xs text-slate-400 font-medium">Daily Outbound Schedule</div>
+                  <div className="text-sm font-bold text-sky-400 mt-1 flex items-center space-x-1.5">
+                    <Clock className="w-4 h-4 text-sky-400" />
+                    <span>9:00 AM – 6:00 PM</span>
+                  </div>
+                  <div className="text-[11px] text-emerald-400 mt-1 font-medium">
+                    Hourly auto-batch (5/hr) &bull; Sleeps overnight
+                  </div>
+                </div>
               </div>
 
               {/* Multi-Source Radar & Channels */}
