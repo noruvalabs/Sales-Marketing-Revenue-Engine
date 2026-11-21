@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Noruva AI — Sales, Marketing & Revenue Engine",
-  description: "Autonomous B2B Customer Acquisition, Qualification & Revenue Platform",
+  title: "RevForge OS — Autonomous Sales Engine by Noruva Labs",
+  description: "Autonomous B2B Customer Acquisition, Qualification & Conversion Platform",
 };
 
 export default function RootLayout({

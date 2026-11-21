@@ -470,7 +470,7 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
       <div className="min-h-screen bg-[#07111f] text-slate-100 flex items-center justify-center font-sans">
         <div className="flex items-center space-x-3 text-slate-400">
           <div className="w-5 h-5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm font-medium">Loading Noruva Revenue Engine...</span>
+          <span className="text-sm font-medium">Loading RevForge OS...</span>
         </div>
       </div>
     );
@@ -481,14 +481,14 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
       {/* Top Navigation Bar */}
       <header className="border-b border-slate-800/80 bg-[#0c1829]/80 backdrop-blur-md sticky top-0 z-50 px-6 py-3 flex items-center justify-between">
         <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-[#34d399] to-[#7dd3fc] flex items-center justify-center font-bold text-slate-950 text-sm shadow-lg shadow-[#34d399]/20">
-            N
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-[#34d399] to-[#7dd3fc] flex items-center justify-center font-bold text-slate-950 text-xs tracking-wider shadow-lg shadow-[#34d399]/20">
+            RF
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <span className="font-bold text-base tracking-tight text-white">NORUVA AI</span>
+              <span className="font-bold text-base tracking-tight text-white">REVFORGE OS</span>
               <span className="text-[10px] uppercase font-semibold tracking-wider bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20">
-                Revenue Engine 0→1
+                by Noruva Labs
               </span>
             </div>
             <p className="text-[11px] text-slate-400">Autonomous B2B Acquisition & Conversion Platform</p>
