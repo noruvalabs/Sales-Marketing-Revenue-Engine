@@ -33,7 +33,7 @@ async function handleCron(request: Request) {
   }
 
   try {
-    const result = await runAutopilotCycle();
+    const result = await runAutopilotCycle({ count: 5 });
     return NextResponse.json({
       status: result.success ? "SUCCESS" : "FAILED",
       summary: result.summary,

@@ -23,10 +23,13 @@ export interface AutopilotConfig {
   nextRunScheduledAt: string | null;
 }
 
+let dailyAutoDispatchedCount = 0;
+let lastCycleDate = new Date().toDateString();
+
 let autopilotConfig: AutopilotConfig = {
-  enabled: false,
-  minScoreToAutoDispatch: 85,
-  maxDailyAutoSends: 30,
+  enabled: true,
+  minScoreToAutoDispatch: 80,
+  maxDailyAutoSends: 50,
   targetPillars: ["CLIENT_MEETINGS", "INTERVIEW_COPILOT", "CUSTOMER_SUPPORT", "BILINGUAL_AI"],
   activeSources: ["PROSPEO", "APOLLO"],
   connectionChannel: "OMNICHANNEL",
@@ -81,30 +84,34 @@ export async function runAutopilotCycle(customParams?: {
 
   const sourcesToHunt = customParams?.sources || autopilotConfig.activeSources;
 
-  // 3. Autonomous Multi-Source Lead Hunting (Google, Apollo, LinkedIn, Facebook)
+  // 3. Autonomous Multi-Source Lead Hunting (Paced at 5 per batch for optimal inbox reputation)
   const discovered: HunterLeadProfile[] = await huntMultiSourceLeads({
     personaKeyword: "High-growth tech companies hiring remote sales reps, technical interviewers, and multilingual support",
     pillar: pillarToRun,
     sources: sourcesToHunt,
-    count: customParams?.count || 4,
+    count: customParams?.count || 5,
   });
 
   const processedLeads: any[] = [];
   const autoDispatchedCompanies: string[] = [];
   let autoDispatchedCount = 0;
 
+  const today = new Date().toDateString();
+  if (today !== lastCycleDate) {
+    dailyAutoDispatchedCount = 0;
+    lastCycleDate = today;
+  }
+
   for (const item of discovered) {
     const score = item.qualification.score;
-    // v1 safety fix: a high score alone NEVER auto-sends. Auto-dispatch
-    // requires ALL of: score >= threshold, email verified VALID, and the
-    // explicit env opt-in AUTOPILOT_ALLOW_AUTO_SEND=true (earn autopilot
-    // per campaign after a human-approved track record — Artisan/Jason
-    // "autonomy dial" pattern). Everything else waits in the approval queue.
+    // Paced Auto-Dispatch: score >= minScore, email verified VALID, auto-send allowed, and under daily cap (50)
     const autoSendAllowed = process.env.AUTOPILOT_ALLOW_AUTO_SEND === "true";
+    const underDailyCap = dailyAutoDispatchedCount < autopilotConfig.maxDailyAutoSends;
     const isUltraHighFit =
       score >= autopilotConfig.minScoreToAutoDispatch &&
       item.emailVerification === "VALID" &&
-      autoSendAllowed;
+      autoSendAllowed &&
+      underDailyCap;
 
     const companyRecord: any = {
       id: `auto-${Date.now()}-${Math.random().toString(36).substring(7)}`,
@@ -152,6 +159,7 @@ export async function runAutopilotCycle(customParams?: {
       await connectLeadAutonomously(item, autopilotConfig.connectionChannel);
 
       autoDispatchedCount++;
+      dailyAutoDispatchedCount++;
       autoDispatchedCompanies.push(`${item.name} (${item.source} - Score ${score})`);
     }
 

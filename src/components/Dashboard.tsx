@@ -227,7 +227,7 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
         }));
         setDispatchMessage({
           text: nextState
-            ? "🤖 Autopilot Agent is now ACTIVE: Automatically discovering & dispatching leads with score ≥ 85."
+            ? "🤖 Autopilot Agent is now ACTIVE: Automatically discovering & dispatching leads with score ≥ 80 (Safety Cap: 50/day)."
             : "⏸️ Autopilot Agent PAUSED: Switched to manual approval mode.",
           type: "success",
         });
