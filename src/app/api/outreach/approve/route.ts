@@ -9,28 +9,37 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing draftId or action" }, { status: 400 });
     }
 
-    const nextStatus = action === "APPROVE" ? "APPROVED" : action === "REJECT" ? "REJECTED" : "PENDING_APPROVAL";
+    const updateData: any = {};
+    if (subject !== undefined) updateData.subject = subject;
+    if (body !== undefined) updateData.body = body;
+
+    if (action === "APPROVE") {
+      updateData.status = "APPROVED";
+      updateData.approvedAt = new Date();
+      updateData.approvedBy = "Human Reviewer (Admin)";
+    } else if (action === "REJECT") {
+      updateData.status = "REJECTED";
+    } else if (action === "RESET") {
+      updateData.status = "PENDING_APPROVAL";
+    }
+    // If action === "UPDATE", status remains unchanged while subject/body are updated!
 
     try {
       const updated = await prisma.outreachDraft.update({
         where: { id: draftId },
-        data: {
-          status: nextStatus as any,
-          approvedAt: action === "APPROVE" ? new Date() : null,
-          approvedBy: action === "APPROVE" ? "Human Reviewer (Noruva Sales Rep)" : null,
-          subject: subject || undefined,
-          body: body || undefined,
-        },
+        data: updateData,
       });
 
       return NextResponse.json({ success: true, draft: updated });
     } catch (err) {
-      // In-memory response
+      // In-memory fallback
       return NextResponse.json({
         success: true,
         draft: {
           id: draftId,
-          status: nextStatus,
+          status: updateData.status,
+          subject,
+          body,
           action,
           updatedAt: new Date().toISOString(),
         },

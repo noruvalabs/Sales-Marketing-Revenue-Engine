@@ -43,6 +43,8 @@ import {
   Share2,
   Link2,
   Terminal,
+  Pencil,
+  Save,
 } from "lucide-react";
 
 export default function Dashboard() {
@@ -52,6 +54,10 @@ export default function Dashboard() {
   >("overview");
   const [discoveryMode, setDiscoveryMode] = useState<"auto" | "csv" | "manual">("auto");
   const [companies, setCompanies] = useState<any[]>([]);
+  const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
+  const [editSubject, setEditSubject] = useState<string>("");
+  const [editBody, setEditBody] = useState<string>("");
+  const [savingDraft, setSavingDraft] = useState<boolean>(false);
   const [suppressionList, setSuppressionList] = useState<any[]>([]);
   const [conversations, setConversations] = useState<any[]>([]);
   const [revenueData, setRevenueData] = useState<{
@@ -364,6 +370,56 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
       );
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleSaveDraftEdit = async (draftId: string, andApprove: boolean = false) => {
+    setSavingDraft(true);
+    try {
+      const action = andApprove ? "APPROVE" : "UPDATE";
+      const res = await fetch("/api/outreach/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          draftId,
+          action,
+          subject: editSubject,
+          body: editBody,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCompanies((prev) =>
+          prev.map((c) => {
+            if (c.draft && c.draft.id === draftId) {
+              return {
+                ...c,
+                draft: {
+                  ...c.draft,
+                  subject: editSubject,
+                  body: editBody,
+                  status: andApprove ? "APPROVED" : c.draft.status,
+                },
+              };
+            }
+            return c;
+          })
+        );
+        setEditingDraftId(null);
+        setDispatchMessage({
+          text: andApprove ? "Draft saved and approved for dispatch!" : "Draft changes saved successfully!",
+          type: "success",
+        });
+      } else {
+        setDispatchMessage({
+          text: `Save failed: ${data.error || "Could not save draft edits"}`,
+          type: "error",
+        });
+      }
+    } catch (err: any) {
+      setDispatchMessage({ text: `Failed to save draft: ${err.message}`, type: "error" });
+    } finally {
+      setSavingDraft(false);
     }
   };
 
@@ -886,10 +942,17 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
                             <span className="text-[11px] text-emerald-400 font-semibold">Paid customer</span>
                           ) : (
                             <button
-                              onClick={() => setActiveTab("approvals")}
-                              className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2 py-1 rounded border border-slate-700 font-medium"
+                              onClick={() => {
+                                setActiveTab("approvals");
+                                if (c.draft && c.draft.status !== "SENT") {
+                                  setEditingDraftId(c.draft.id);
+                                  setEditSubject(c.draft.subject || "");
+                                  setEditBody(c.draft.body || "");
+                                }
+                              }}
+                              className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2 py-1 rounded border border-slate-700 font-medium hover:border-slate-600 transition-colors"
                             >
-                              Review
+                              Review & Edit
                             </button>
                           )}
                         </td>
@@ -1314,116 +1377,251 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
                   .map((c) => {
                     const status = c.draft.status;
                     const isSending = sendingDraftId === c.draft.id;
+                    const isEditing = editingDraftId === c.draft.id;
                     return (
                       <div
                         key={c.id}
                         className={`bg-[#0c1b2e] border rounded-xl p-5 flex flex-col justify-between space-y-4 transition-all ${
-                          status === "SENT"
+                          isEditing
+                            ? "border-sky-500/60 shadow-xl shadow-sky-500/10 ring-1 ring-sky-500/40"
+                            : status === "SENT"
                             ? "border-sky-500/30 opacity-80"
                             : status === "APPROVED"
                             ? "border-emerald-500/40 shadow-lg shadow-emerald-500/5"
-                            : "border-slate-800"
+                            : "border-slate-800 hover:border-slate-700"
                         }`}
                       >
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                            <div>
-                              <div className="font-bold text-white text-sm">{c.name}</div>
-                              <div className="text-xs text-slate-400">
-                                To: {c.contacts?.[0]?.firstName} {c.contacts?.[0]?.lastName} ({c.contacts?.[0]?.email})
+                        {isEditing ? (
+                          /* EDIT MODE */
+                          <div className="space-y-4">
+                            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                              <div>
+                                <div className="font-bold text-white text-sm">{c.name}</div>
+                                <div className="text-xs text-slate-400">
+                                  To: {c.contacts?.[0]?.firstName} {c.contacts?.[0]?.lastName} ({c.contacts?.[0]?.email})
+                                </div>
+                              </div>
+                              <span className="text-[10px] font-bold uppercase tracking-wider bg-sky-500/15 text-sky-400 border border-sky-500/30 px-2 py-0.5 rounded flex items-center space-x-1">
+                                <Pencil className="w-3 h-3" />
+                                <span>Editing Draft</span>
+                              </span>
+                            </div>
+
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between text-[11px] font-semibold text-slate-300">
+                                <span>SUBJECT LINE:</span>
+                                <span className="text-[10px] text-slate-500 font-mono">Editable</span>
+                              </div>
+                              <input
+                                type="text"
+                                value={editSubject}
+                                onChange={(e) => setEditSubject(e.target.value)}
+                                placeholder="Enter email subject line..."
+                                className="w-full bg-slate-900 border border-slate-700 focus:border-sky-400 focus:ring-1 focus:ring-sky-400 rounded-lg px-3 py-2 text-xs font-medium text-white focus:outline-none transition-colors"
+                              />
+                            </div>
+
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between text-[11px] font-semibold text-slate-300">
+                                <span>EMAIL BODY:</span>
+                                <span className="text-[10px] text-slate-500 font-mono">Custom text</span>
+                              </div>
+                              <textarea
+                                rows={8}
+                                value={editBody}
+                                onChange={(e) => setEditBody(e.target.value)}
+                                placeholder="Review and customize outreach copy..."
+                                className="w-full bg-slate-900 border border-slate-700 focus:border-sky-400 focus:ring-1 focus:ring-sky-400 rounded-lg p-3 text-xs text-slate-100 focus:outline-none leading-relaxed font-sans resize-y"
+                              />
+                            </div>
+
+                            <div className="pt-2 border-t border-slate-800 flex items-center space-x-2">
+                              <button
+                                type="button"
+                                onClick={() => handleSaveDraftEdit(c.draft.id, false)}
+                                disabled={savingDraft}
+                                className="flex-1 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold py-2 rounded-lg text-xs flex items-center justify-center space-x-1.5 transition-all shadow-md shadow-sky-500/20"
+                              >
+                                {savingDraft ? (
+                                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <Save className="w-3.5 h-3.5" />
+                                )}
+                                <span>Save Changes</span>
+                              </button>
+
+                              {status === "PENDING_APPROVAL" && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveDraftEdit(c.draft.id, true)}
+                                  disabled={savingDraft}
+                                  className="flex-1 bg-[#34d399] hover:bg-[#2fc28c] text-slate-950 font-bold py-2 rounded-lg text-xs flex items-center justify-center space-x-1.5 transition-all shadow-md shadow-[#34d399]/10"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  <span>Save & Approve</span>
+                                </button>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() => setEditingDraftId(null)}
+                                disabled={savingDraft}
+                                className="bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 py-2 px-3 rounded-lg text-xs transition-colors"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          /* VIEW MODE */
+                          <>
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                                <div>
+                                  <div className="font-bold text-white text-sm">{c.name}</div>
+                                  <div className="text-xs text-slate-400">
+                                    To: {c.contacts?.[0]?.firstName} {c.contacts?.[0]?.lastName} ({c.contacts?.[0]?.email})
+                                  </div>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                  {status !== "SENT" && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingDraftId(c.draft.id);
+                                        setEditSubject(c.draft.subject || "");
+                                        setEditBody(c.draft.body || "");
+                                      }}
+                                      className="flex items-center space-x-1 text-[11px] font-semibold text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-700 px-2 py-0.5 rounded-lg transition-colors"
+                                      title="Edit Subject and Body"
+                                    >
+                                      <Pencil className="w-3 h-3 text-sky-400" />
+                                      <span>Edit</span>
+                                    </button>
+                                  )}
+                                  <span className="text-xs font-bold text-[#34d399] bg-[#34d399]/10 px-2 py-0.5 rounded">
+                                    Score: {c.icpScore}
+                                  </span>
+                                  <span
+                                    className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
+                                      status === "SENT"
+                                        ? "bg-sky-500/10 text-sky-400 border border-sky-500/20"
+                                        : status === "APPROVED"
+                                        ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                                        : status === "REJECTED"
+                                        ? "bg-rose-500/10 text-rose-400"
+                                        : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                                    }`}
+                                  >
+                                    {status}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="space-y-1">
+                                <div className="text-[11px] font-semibold text-slate-400">SUBJECT:</div>
+                                <div className="text-xs font-medium text-white bg-slate-900/80 p-2 rounded border border-slate-800">
+                                  {c.draft?.subject}
+                                </div>
+                              </div>
+
+                              <div className="space-y-1">
+                                <div className="text-[11px] font-semibold text-slate-400">EMAIL BODY:</div>
+                                <div className="text-xs text-slate-300 bg-slate-900/80 p-3 rounded border border-slate-800 whitespace-pre-line leading-relaxed font-sans max-h-48 overflow-y-auto">
+                                  {c.draft?.body}
+                                </div>
                               </div>
                             </div>
-                            <div className="flex items-center space-x-2">
-                              <span className="text-xs font-bold text-[#34d399] bg-[#34d399]/10 px-2 py-0.5 rounded">
-                                Score: {c.icpScore}
-                              </span>
-                              <span
-                                className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
-                                  status === "SENT"
-                                    ? "bg-sky-500/10 text-sky-400 border border-sky-500/20"
-                                    : status === "APPROVED"
-                                    ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                                    : status === "REJECTED"
-                                    ? "bg-rose-500/10 text-rose-400"
-                                    : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                                }`}
-                              >
-                                {status}
-                              </span>
-                            </div>
-                          </div>
 
-                          <div className="space-y-1">
-                            <div className="text-[11px] font-semibold text-slate-400">SUBJECT:</div>
-                            <div className="text-xs font-medium text-white bg-slate-900/80 p-2 rounded border border-slate-800">
-                              {c.draft?.subject}
-                            </div>
-                          </div>
+                            <div className="pt-2 border-t border-slate-800">
+                              {status === "PENDING_APPROVAL" && (
+                                <div className="flex items-center space-x-2">
+                                  <button
+                                    onClick={() => handleApprove(c.draft.id, "APPROVE")}
+                                    className="flex-1 bg-[#34d399] hover:bg-[#2fc28c] text-slate-950 font-bold py-2 rounded-lg text-xs flex items-center justify-center space-x-1.5 transition-all shadow-md shadow-[#34d399]/10"
+                                  >
+                                    <CheckCircle2 className="w-4 h-4" />
+                                    <span>Approve Outreach</span>
+                                  </button>
 
-                          <div className="space-y-1">
-                            <div className="text-[11px] font-semibold text-slate-400">EMAIL BODY:</div>
-                            <div className="text-xs text-slate-300 bg-slate-900/80 p-3 rounded border border-slate-800 whitespace-pre-line leading-relaxed font-sans max-h-48 overflow-y-auto">
-                              {c.draft?.body}
-                            </div>
-                          </div>
-                        </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingDraftId(c.draft.id);
+                                      setEditSubject(c.draft.subject || "");
+                                      setEditBody(c.draft.body || "");
+                                    }}
+                                    className="bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 py-2 px-3 rounded-lg text-xs flex items-center space-x-1 transition-colors"
+                                    title="Edit Draft"
+                                  >
+                                    <Pencil className="w-3.5 h-3.5 text-sky-400" />
+                                    <span>Edit</span>
+                                  </button>
 
-                        <div className="pt-2 border-t border-slate-800">
-                          {status === "PENDING_APPROVAL" && (
-                            <div className="flex items-center space-x-2">
-                              <button
-                                onClick={() => handleApprove(c.draft.id, "APPROVE")}
-                                className="flex-1 bg-[#34d399] hover:bg-[#2fc28c] text-slate-950 font-bold py-2 rounded-lg text-xs flex items-center justify-center space-x-1.5 transition-all shadow-md shadow-[#34d399]/10"
-                              >
-                                <CheckCircle2 className="w-4 h-4" />
-                                <span>Approve Outreach</span>
-                              </button>
-
-                              <button
-                                onClick={() => handleApprove(c.draft.id, "REJECT")}
-                                className="bg-slate-900 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-slate-800 hover:border-rose-800 py-2 px-3 rounded-lg text-xs transition-colors"
-                              >
-                                <XCircle className="w-4 h-4" />
-                              </button>
-                            </div>
-                          )}
-
-                          {status === "APPROVED" && (
-                            <button
-                              onClick={() => handleDispatch(c)}
-                              disabled={isSending}
-                              className="w-full bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold py-2 rounded-lg text-xs flex items-center justify-center space-x-2 transition-all shadow-md shadow-sky-500/20"
-                            >
-                              {isSending ? (
-                                <>
-                                  <RefreshCw className="w-4 h-4 animate-spin" />
-                                  <span>Dispatching Email...</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Send className="w-4 h-4" />
-                                  <span>Dispatch Email Now (Safe Send)</span>
-                                </>
+                                  <button
+                                    onClick={() => handleApprove(c.draft.id, "REJECT")}
+                                    className="bg-slate-900 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-slate-800 hover:border-rose-800 py-2 px-3 rounded-lg text-xs transition-colors"
+                                    title="Reject Draft"
+                                  >
+                                    <XCircle className="w-4 h-4" />
+                                  </button>
+                                </div>
                               )}
-                            </button>
-                          )}
 
-                          {status === "SENT" && (
-                            <div className="flex items-center justify-between text-xs text-slate-400 bg-slate-900/50 p-2 rounded">
-                              <span className="flex items-center space-x-1 text-sky-400">
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                <span>Dispatched to inbox</span>
-                              </span>
-                              <span className="text-[10px] text-slate-500">Pipeline: Contacted</span>
-                            </div>
-                          )}
+                              {status === "APPROVED" && (
+                                <div className="flex items-center space-x-2">
+                                  <button
+                                    onClick={() => handleDispatch(c)}
+                                    disabled={isSending}
+                                    className="flex-1 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold py-2 rounded-lg text-xs flex items-center justify-center space-x-2 transition-all shadow-md shadow-sky-500/20"
+                                  >
+                                    {isSending ? (
+                                      <>
+                                        <RefreshCw className="w-4 h-4 animate-spin" />
+                                        <span>Dispatching Email...</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Send className="w-4 h-4" />
+                                        <span>Dispatch Email Now (Safe Send)</span>
+                                      </>
+                                    )}
+                                  </button>
 
-                          {status === "REJECTED" && (
-                            <div className="text-xs text-rose-400 bg-rose-950/20 p-2 rounded text-center">
-                              Draft Rejected by Reviewer
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingDraftId(c.draft.id);
+                                      setEditSubject(c.draft.subject || "");
+                                      setEditBody(c.draft.body || "");
+                                    }}
+                                    className="bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 py-2 px-3 rounded-lg text-xs flex items-center space-x-1 transition-colors"
+                                    title="Edit Approved Draft"
+                                  >
+                                    <Pencil className="w-3.5 h-3.5 text-sky-400" />
+                                    <span>Edit</span>
+                                  </button>
+                                </div>
+                              )}
+
+                              {status === "SENT" && (
+                                <div className="flex items-center justify-between text-xs text-slate-400 bg-slate-900/50 p-2 rounded">
+                                  <span className="flex items-center space-x-1 text-sky-400">
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    <span>Dispatched to inbox</span>
+                                  </span>
+                                  <span className="text-[10px] text-slate-500">Pipeline: Contacted</span>
+                                </div>
+                              )}
+
+                              {status === "REJECTED" && (
+                                <div className="text-xs text-rose-400 bg-rose-950/20 p-2 rounded text-center">
+                                  Draft Rejected by Reviewer
+                                </div>
+                              )}
                             </div>
-                          )}
-                        </div>
+                          </>
+                        )}
                       </div>
                     );
                   })}
