@@ -101,18 +101,18 @@ export async function huntRealLeads(params: {
   // verification and be dropped).
   const raw: ProviderLead[] = [];
   const providersUsed: string[] = [];
-  if (providers.includes("PROSPEO")) {
-    const r = await searchProspeo(query); providersUsed.push("PROSPEO");
+  const providerErrors: string[] = [];
+  // Only report a provider as "used" when it actually answered. (Apollo's
+  // free plan rejects search with HTTP 403 — listing it as used was a lie.)
+  const collect = (r: { provider: string; leads: ProviderLead[]; error?: string }) => {
+    if (r.error) { providerErrors.push(`${r.provider}: ${r.error}`); return; }
+    providersUsed.push(r.provider);
     raw.push(...r.leads);
-  }
-  if (raw.length < count * 2 && providers.includes("APOLLO")) {
-    const r = await searchApollo(query); providersUsed.push("APOLLO");
-    raw.push(...r.leads);
-  }
-  if (raw.length < count * 2 && providers.includes("HUNTER") && (params.domains?.length || 0) > 0) {
-    const r = await searchHunter(query); providersUsed.push("HUNTER");
-    raw.push(...r.leads);
-  }
+  };
+  if (providers.includes("PROSPEO")) collect(await searchProspeo(query));
+  if (raw.length < count * 2 && providers.includes("APOLLO")) collect(await searchApollo(query));
+  if (raw.length < count * 2 && providers.includes("HUNTER") && (params.domains?.length || 0) > 0) collect(await searchHunter(query));
+  if (providerErrors.length > 0) console.warn("[discovery] provider errors:", providerErrors.join(" | "));
 
   // Dedupe by email, then verify — INVALID leads are dropped, never sent.
   const seen = new Set<string>();
@@ -156,7 +156,7 @@ export async function huntRealLeads(params: {
 
   return {
     configured: true,
-    message: `Found ${leads.length} real leads via ${providersUsed.join(" + ")} (${droppedInvalid} dropped as invalid emails). Only VALID emails can be auto-sent; RISKY/UNKNOWN wait in the approval queue.`,
+    message: `Found ${leads.length} real leads via ${providersUsed.join(" + ") || "no working provider"} (${droppedInvalid} dropped as invalid emails). Only VALID emails can be auto-sent; RISKY/UNKNOWN wait in the approval queue.${providerErrors.length ? ` Provider problems: ${providerErrors.join("; ")}` : ""}`,
     leads, droppedInvalid, providersUsed,
   };
 }
