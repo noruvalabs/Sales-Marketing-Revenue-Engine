@@ -121,8 +121,18 @@ export async function checkAndRunScheduledCycle(): Promise<{ ran: boolean; reaso
     console.log(`[RevForge Scheduler] Cycle complete: ${cycleResult.summary}`);
     return { ran: true, reason: cycleResult.summary };
   } catch (err: any) {
+    const msg: string = err?.message || "";
+    // If Prospeo rate-limited (429), back off for 10 minutes before next attempt
+    if (msg.includes("429") || msg.toLowerCase().includes("rate limit") || msg.toLowerCase().includes("too many")) {
+      console.warn(`[RevForge Scheduler] Provider rate-limited (429). Backing off 10 min before next check.`);
+      // Temporarily mark this hour as "done" so we skip the next few ticks,
+      // but reset after 10 min so the hour-slot can be retried once if still within window.
+      lastRunHour = currentHour;
+      setTimeout(() => { lastRunHour = -1; }, 10 * 60 * 1000);
+      return { ran: false, reason: `Rate limited — backing off 10 min. Original: ${msg}` };
+    }
     console.error(`[RevForge Scheduler] Cycle error:`, err);
-    return { ran: false, reason: err.message };
+    return { ran: false, reason: msg };
   }
 }
 
