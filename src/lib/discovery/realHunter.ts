@@ -62,7 +62,7 @@ export async function huntRealLeads(params: {
   count?: number;
 }): Promise<RealHuntResult> {
   const providers = configuredProviders();
-  const webConfigured = !!process.env.TAVILY_API_KEY || (params.domains?.length || 0) > 0;
+  const webConfigured = !!process.env.TAVILY_API_KEY || !!process.env.SERPER_API_KEY || (params.domains?.length || 0) > 0;
   if (providers.length === 0 && !webConfigured) {
     return {
       configured: false,

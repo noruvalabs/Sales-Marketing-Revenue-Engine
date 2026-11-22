@@ -64,26 +64,29 @@ const JUNK_PATTERNS = [
   /@sentry\./i, /@wixpress\.com$/i, /@example\./i, /@domain\.com$/i,
   /@email\.com$/i, /@yourdomain/i, /\.png$/i, /\.jpe?g$/i, /\.svg$/i,
   /@2x/i, /godaddy/i, /@squarespace/i,
+  // Placeholder addresses and site-builder/hosting domains are not inboxes.
+  /@company\.com$/i, /@company\.co$/i, /cloudwaysapps\.com$/i,
+  /wixsite\.com$/i, /godaddysites\.com$/i, /@yourcompany/i,
 ];
 
 const PILLAR_QUERIES: Record<string, string[]> = {
   CLIENT_MEETINGS: [
-    "B2B SaaS company hiring account executives sales team",
-    "software company hiring SDR business development representatives",
-    "agency hiring client success managers remote",
+    'B2B SaaS company "sales team" "contact us" about',
+    'software company "account executives" team about us',
+    'marketing agency "client success" team contact',
   ],
   INTERVIEW_COPILOT: [
-    "tech company hiring software engineers recruiting",
-    "staffing agency hiring technical recruiters",
-    "startup hiring engineering manager talent acquisition",
+    'staffing agency "our recruiters" team contact',
+    'tech startup "talent acquisition" team about',
+    'recruitment agency services team contact us',
   ],
   CUSTOMER_SUPPORT: [
-    "company hiring customer support representatives remote",
-    "SaaS company hiring customer success support team",
+    'SaaS company "customer success team" about contact',
+    'ecommerce company "customer support" team about us',
   ],
   BILINGUAL_AI: [
-    "global remote company hiring multilingual support team",
-    "international company hiring bilingual customer service",
+    'global company "multilingual" services team contact',
+    'international outsourcing company bilingual support about',
   ],
 };
 
@@ -226,6 +229,16 @@ async function searchCompanyDomains(pillar: string, limit: number): Promise<stri
     "linkedin.com", "facebook.com", "indeed.com", "glassdoor.com",
     "google.com", "youtube.com", "twitter.com", "x.com", "instagram.com",
     "wikipedia.org", "crunchbase.com", "g2.com", "capterra.com",
+    // Job boards, aggregators and ATS platforms are not buyer companies.
+    "ziprecruiter.com", "bebee.com", "jobleads.com", "wellfound.com",
+    "builtin.com", "remoteok.com", "weworkremotely.com", "lever.co",
+    "greenhouse.io", "ashbyhq.com", "workable.com", "smartrecruiters.com",
+    "jobvite.com", "simplyhired.com", "dice.com", "monster.com",
+    "careerbuilder.com", "reed.co.uk", "totaljobs.com", "seek.com.au",
+    "adzuna.com", "jooble.org", "talent.com", "snagajob.com",
+    "flexjobs.com", "remotive.com", "himalayas.app", "arc.dev",
+    "toptal.com", "upwork.com", "fiverr.com", "freelancer.com",
+    "producthunt.com", "clutch.co", "goodfirms.co", "trustpilot.com",
   ];
   for (const q of queries) {
     try {
@@ -248,6 +261,30 @@ async function searchCompanyDomains(pillar: string, limit: number): Promise<stri
       }
     } catch { /* try next query */ }
   }
+  // Second search door: Serper (Google results). Used when Tavily is not
+  // configured, errors (e.g. monthly credits finished), or returns too few.
+  if (domains.length < limit && process.env.SERPER_API_KEY) {
+    for (const q of queries) {
+      try {
+        const res = await fetch("https://google.serper.dev/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-API-KEY": process.env.SERPER_API_KEY },
+          body: JSON.stringify({ q, num: 10 }),
+        });
+        if (!res.ok) {
+          lastSearchError = `Serper HTTP ${res.status}`;
+          continue;
+        }
+        const data: any = await res.json();
+        for (const r of data?.organic || []) {
+          const host = cleanDomain(r?.link || "");
+          if (!host || skipHosts.some((sk) => host.endsWith(sk))) continue;
+          if (!domains.includes(host)) domains.push(host);
+          if (domains.length >= limit) return domains;
+        }
+      } catch { /* try next query */ }
+    }
+  }
   return domains;
 }
 
@@ -260,11 +297,11 @@ export async function huntWebLeads(params: {
   let domains = (params.domains || []).map(cleanDomain).filter(Boolean);
 
   if (domains.length === 0) {
-    if (!process.env.TAVILY_API_KEY) {
+    if (!process.env.TAVILY_API_KEY && !process.env.SERPER_API_KEY) {
       return {
         configured: false,
         message:
-          "Web Hunter needs a search source: add TAVILY_API_KEY (free, 1,000 searches/month, no card) or pass seed domains. It never invents companies.",
+          "Web Hunter needs a search source: add TAVILY_API_KEY or SERPER_API_KEY (both have free tiers, no card) or pass seed domains. It never invents companies.",
         leads: [], companiesChecked: 0, companiesWithEmail: 0,
       };
     }
