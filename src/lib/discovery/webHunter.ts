@@ -216,6 +216,7 @@ async function crawlCompany(domain: string): Promise<WebLead | null> {
 }
 
 /** Find candidate company domains via Tavily web search. */
+let lastSearchError = "";
 async function searchCompanyDomains(pillar: string, limit: number): Promise<string[]> {
   const apiKey = process.env.TAVILY_API_KEY;
   if (!apiKey) return [];
@@ -233,7 +234,11 @@ async function searchCompanyDomains(pillar: string, limit: number): Promise<stri
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify({ query: q, max_results: 10, search_depth: "basic" }),
       });
-      if (!res.ok) continue;
+      if (!res.ok) {
+        const body: any = await res.json().catch(() => ({}));
+        lastSearchError = `Tavily HTTP ${res.status}: ${body?.detail?.error || "search failed"}`;
+        continue;
+      }
       const data: any = await res.json();
       for (const r of data?.results || []) {
         const host = cleanDomain(r?.url || "");
@@ -278,7 +283,9 @@ export async function huntWebLeads(params: {
 
   return {
     configured: true,
-    message: `Web Hunter checked ${checked} company websites and found ${leads.length} with a published contact email. Web emails are unverified until MillionVerifier checks them — they wait in Approvals, they are not auto-sent.`,
+    message: checked === 0 && lastSearchError
+      ? `Web Hunter could not search the web: ${lastSearchError}`
+      : `Web Hunter checked ${checked} company websites and found ${leads.length} with a published contact email. Web emails are unverified until MillionVerifier checks them — they wait in Approvals, they are not auto-sent.`,
     leads,
     companiesChecked: checked,
     companiesWithEmail: leads.length,
