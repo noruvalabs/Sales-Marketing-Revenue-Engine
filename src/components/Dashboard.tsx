@@ -154,6 +154,12 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
     }
   };
 
+  // Daily cap editor (Autopilot tab): admin can increase/decrease the
+  // Daily Outbound Safety Cap. Saved via /api/autopilot UPDATE_SETTINGS.
+  const [capDraft, setCapDraft] = useState<string>("");
+  const [capSaving, setCapSaving] = useState(false);
+  const [capSaved, setCapSaved] = useState(false);
+
   // Outbox: the two lists — emails in queue vs emails already sent.
   const [outbox, setOutbox] = useState<{ queue: any[]; sent: any[] }>({ queue: [], sent: [] });
   const fetchOutbox = async () => {
@@ -225,6 +231,35 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
     fetchAutopilot();
     fetchOutbox();
   }, []);
+
+  // Keep the cap editor showing the saved value whenever config reloads.
+  useEffect(() => {
+    setCapDraft(String(autopilotState.config.maxDailyAutoSends));
+  }, [autopilotState.config.maxDailyAutoSends]);
+
+  const handleSaveCap = async (value: number) => {
+    const v = Math.min(500, Math.max(1, Math.floor(value) || 0));
+    if (!v) return;
+    setCapSaving(true);
+    try {
+      const res = await fetch("/api/autopilot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "UPDATE_SETTINGS", maxDailyAutoSends: v }),
+      });
+      const data = await res.json();
+      if (data.success && data.config) {
+        setAutopilotState((prev) => ({ ...prev, config: data.config }));
+        setCapDraft(String(data.config.maxDailyAutoSends));
+        setCapSaved(true);
+        setTimeout(() => setCapSaved(false), 2500);
+      }
+    } catch (err) {
+      console.error("Failed to save daily cap", err);
+    } finally {
+      setCapSaving(false);
+    }
+  };
 
   const handleToggleAutopilot = async () => {
     const nextState = !autopilotState.config.enabled;
@@ -742,10 +777,44 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
 
                 <div className="p-4 rounded-xl bg-slate-900 border border-slate-800">
                   <div className="text-xs text-slate-400 font-medium">Daily Outbound Safety Cap</div>
-                  <div className="text-xl font-bold text-white mt-1">
-                    {autopilotState.config.maxDailyAutoSends} / day
+                  <div className="flex items-center space-x-2 mt-1.5">
+                    <button
+                      onClick={() => setCapDraft(String(Math.max(1, (parseInt(capDraft) || 0) - 5)))}
+                      className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-bold text-sm leading-none"
+                      title="Decrease by 5"
+                    >
+                      −
+                    </button>
+                    <input
+                      type="number"
+                      min={1}
+                      max={500}
+                      value={capDraft}
+                      onChange={(e) => setCapDraft(e.target.value)}
+                      className="w-16 bg-slate-950 border border-slate-700 focus:border-emerald-400 rounded-lg px-2 py-1 text-center text-base font-bold text-white focus:outline-none"
+                    />
+                    <button
+                      onClick={() => setCapDraft(String(Math.min(500, (parseInt(capDraft) || 0) + 5)))}
+                      className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-bold text-sm leading-none"
+                      title="Increase by 5"
+                    >
+                      +
+                    </button>
+                    <span className="text-xs text-slate-400 font-medium">/ day</span>
                   </div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">Protects domain reputation</div>
+                  <div className="flex items-center space-x-2 mt-2">
+                    <button
+                      onClick={() => handleSaveCap(parseInt(capDraft))}
+                      disabled={capSaving || parseInt(capDraft) === autopilotState.config.maxDailyAutoSends}
+                      className="text-[11px] font-bold bg-emerald-500/15 hover:bg-emerald-500/25 disabled:opacity-40 disabled:cursor-not-allowed text-emerald-400 border border-emerald-500/30 px-3 py-1 rounded-lg"
+                    >
+                      {capSaving ? "Saving…" : "Save cap"}
+                    </button>
+                    {capSaved && <span className="text-[11px] text-emerald-400 font-medium">Saved ✓ — active now</span>}
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-1.5">
+                    Protects domain reputation. Applies to auto + manual sends. Range 1–500; resets to the .env value when the server restarts.
+                  </div>
                 </div>
 
                 <div className="p-4 rounded-xl bg-slate-900 border border-slate-800">
