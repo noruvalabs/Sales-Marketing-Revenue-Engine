@@ -50,7 +50,7 @@ import {
 export default function Dashboard() {
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    "overview" | "autopilot" | "discovery" | "approvals" | "conversations" | "pipeline" | "suppression"
+    "overview" | "autopilot" | "discovery" | "approvals" | "outbox" | "conversations" | "pipeline" | "suppression"
   >("overview");
   const [discoveryMode, setDiscoveryMode] = useState<"auto" | "csv" | "manual">("auto");
   const [companies, setCompanies] = useState<any[]>([]);
@@ -154,6 +154,20 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
     }
   };
 
+  // Outbox: the two lists — emails in queue vs emails already sent.
+  const [outbox, setOutbox] = useState<{ queue: any[]; sent: any[] }>({ queue: [], sent: [] });
+  const fetchOutbox = async () => {
+    try {
+      const res = await fetch("/api/outbox");
+      const data = await res.json();
+      if (data.queue && data.sent) {
+        setOutbox({ queue: data.queue, sent: data.sent });
+      }
+    } catch (err) {
+      console.error("Failed to load outbox", err);
+    }
+  };
+
   const fetchSuppressionList = async () => {
     try {
       const res = await fetch("/api/suppression");
@@ -209,6 +223,7 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
     fetchConversations();
     fetchRevenue();
     fetchAutopilot();
+    fetchOutbox();
   }, []);
 
   const handleToggleAutopilot = async () => {
@@ -584,6 +599,12 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
             label: "Approvals",
             icon: FileText,
             badge: pendingDrafts.length > 0 ? pendingDrafts.length : undefined,
+          },
+          {
+            id: "outbox",
+            label: "Outbox",
+            icon: Send,
+            badge: outbox.queue.length > 0 ? outbox.queue.length : undefined,
           },
           {
             id: "conversations",
@@ -1351,6 +1372,124 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
         )}
 
         {/* TAB 3: HUMAN REVIEW & DISPATCH COCKPIT */}
+        {activeTab === "outbox" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center space-x-2">
+                  <Send className="w-5 h-5 text-[#34d399]" />
+                  <span>Outbox</span>
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Two lists: emails waiting in the queue, and emails already sent.
+                </p>
+              </div>
+              <button
+                onClick={fetchOutbox}
+                className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-full border border-slate-700"
+              >
+                Refresh
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+              {/* LIST 1: IN QUEUE */}
+              <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl overflow-hidden">
+                <div className="px-5 py-3 border-b border-slate-800 flex items-center justify-between">
+                  <span className="text-sm font-bold text-white">In Queue</span>
+                  <span className="text-xs bg-amber-500/10 text-amber-400 px-2.5 py-0.5 rounded-full border border-amber-500/20">
+                    {outbox.queue.length} waiting
+                  </span>
+                </div>
+                {outbox.queue.length === 0 ? (
+                  <p className="px-5 py-8 text-xs text-slate-400 text-center">
+                    Queue is empty. New drafts from Discovery or Autopilot will appear here.
+                  </p>
+                ) : (
+                  <div className="divide-y divide-slate-800/70">
+                    {outbox.queue.map((d: any) => (
+                      <div key={d.id} className="px-5 py-3 space-y-1">
+                        <div className="flex items-center justify-between space-x-2">
+                          <span className="text-xs font-bold text-white truncate">
+                            {d.contactName} · {d.companyName}
+                          </span>
+                          {d.status === "FAILED" ? (
+                            <span className="text-[10px] font-bold uppercase tracking-wider bg-rose-500/15 text-rose-400 border border-rose-500/30 px-2 py-0.5 rounded whitespace-nowrap">
+                              Failed
+                            </span>
+                          ) : d.status === "APPROVED" ? (
+                            <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded whitespace-nowrap">
+                              Approved
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded whitespace-nowrap">
+                              Waiting approval
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-slate-400 truncate">
+                          To: {d.contactEmail} — “{d.subject}”
+                        </div>
+                        <div className="text-[11px] text-slate-500">
+                          {d.status === "FAILED"
+                            ? `Failed: ${d.errorMessage || "send error — check Approvals"}`
+                            : d.stepNumber > 1
+                            ? `Step ${d.stepNumber} of 3 · sends ${d.sendAfterDays} days after step 1`
+                            : d.status === "APPROVED"
+                            ? "Step 1 · approved — goes out in the next autopilot batch (hourly, 9 AM–6 PM)"
+                            : "Step 1 · will send after approval"}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* LIST 2: SENT */}
+              <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl overflow-hidden">
+                <div className="px-5 py-3 border-b border-slate-800 flex items-center justify-between">
+                  <span className="text-sm font-bold text-white">Sent</span>
+                  <span className="text-xs bg-sky-500/10 text-sky-400 px-2.5 py-0.5 rounded-full border border-sky-500/20">
+                    {outbox.sent.length} sent
+                  </span>
+                </div>
+                {outbox.sent.length === 0 ? (
+                  <p className="px-5 py-8 text-xs text-slate-400 text-center">
+                    No emails sent yet. Sent emails will appear here with their date and time.
+                  </p>
+                ) : (
+                  <div className="divide-y divide-slate-800/70">
+                    {outbox.sent.map((d: any) => (
+                      <div key={d.id} className="px-5 py-3 space-y-1">
+                        <div className="flex items-center justify-between space-x-2">
+                          <span className="text-xs font-bold text-white truncate">
+                            {d.contactName} · {d.companyName}
+                          </span>
+                          <span className="text-[10px] font-bold uppercase tracking-wider bg-sky-500/15 text-sky-400 border border-sky-500/30 px-2 py-0.5 rounded whitespace-nowrap">
+                            Sent ✓
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 truncate">
+                          To: {d.contactEmail} — “{d.subject}”
+                        </div>
+                        <div className="text-[11px] text-slate-500">
+                          Step {d.stepNumber} of 3 ·{" "}
+                          {d.sentAt
+                            ? new Date(d.sentAt).toLocaleString(undefined, {
+                                dateStyle: "medium",
+                                timeStyle: "short",
+                              })
+                            : "date not recorded"}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeTab === "approvals" && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
