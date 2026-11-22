@@ -13,7 +13,7 @@
  * Every email returned here still goes through emailVerifier before use.
  */
 
-export type LeadProviderName = "PROSPEO" | "APOLLO" | "HUNTER";
+export type LeadProviderName = "WEB" | "PROSPEO" | "APOLLO" | "HUNTER";
 
 export interface ProviderLead {
   companyName: string;

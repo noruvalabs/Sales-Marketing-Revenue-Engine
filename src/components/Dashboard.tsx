@@ -119,7 +119,7 @@ export default function Dashboard() {
   const [autoSearchInput, setAutoSearchInput] = useState({
     personaKeyword: "B2B SaaS companies expanding remote sales teams and SDRs",
     pillar: "CLIENT_MEETINGS" as "CLIENT_MEETINGS" | "INTERVIEW_COPILOT" | "CUSTOMER_SUPPORT" | "BILINGUAL_AI",
-    sources: ["PROSPEO", "APOLLO", "HUNTER"],
+    sources: ["WEB", "PROSPEO", "APOLLO", "HUNTER"],
     count: 4,
   });
 
@@ -1046,6 +1046,7 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
                       <label className="block text-slate-300 font-medium mb-1.5">Lead providers</label>
                       <div className="grid grid-cols-2 gap-2">
                         {[
+                          { id: "WEB", label: "Web Hunter (ours)", icon: Globe },
                           { id: "PROSPEO", label: "Prospeo", icon: Zap },
                           { id: "APOLLO", label: "Apollo.io", icon: Globe },
                           { id: "HUNTER", label: "Hunter.io", icon: Search },

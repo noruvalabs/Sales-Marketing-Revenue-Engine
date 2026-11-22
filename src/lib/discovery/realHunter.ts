@@ -14,6 +14,7 @@
  */
 
 import { searchProspeo, searchApollo, searchHunter, configuredProviders, type ProviderLead, type LeadSearchQuery } from "@/lib/discovery/providers";
+import { huntWebLeads } from "@/lib/discovery/webHunter";
 import { verifyEmail, type EmailVerificationStatus } from "@/lib/verification/emailVerifier";
 import { researchCompany, type CompanyResearch } from "@/lib/research/companyResearch";
 import { qualifyCompany, type QualificationResult } from "@/lib/ai/qualify";
@@ -61,11 +62,12 @@ export async function huntRealLeads(params: {
   count?: number;
 }): Promise<RealHuntResult> {
   const providers = configuredProviders();
-  if (providers.length === 0) {
+  const webConfigured = !!process.env.TAVILY_API_KEY || (params.domains?.length || 0) > 0;
+  if (providers.length === 0 && !webConfigured) {
     return {
       configured: false,
       message:
-        "No lead provider configured. Add PROSPEO_API_KEY (75 free verified emails/month), APOLLO_API_KEY, or HUNTER_API_KEY in .env — or import real leads by CSV / manual entry. Fake catalog discovery was removed in v1: this engine never invents companies or emails.",
+        "No lead source configured. Main provider (Web Hunter) needs TAVILY_API_KEY (free, 1,000 searches/month) — or add PROSPEO_API_KEY / APOLLO_API_KEY / HUNTER_API_KEY as secondary providers, or import real leads by CSV / manual entry. This engine never invents companies or emails.",
       leads: [], droppedInvalid: 0, providersUsed: [],
     };
   }
@@ -96,12 +98,27 @@ export async function huntRealLeads(params: {
     }
   } catch { /* DB offline — in-run dedupe still applies */ }
 
-  // Waterfall: quality first (Prospeo), then breadth (Apollo), then Hunter
-  // for known domains. Collect until we have ~2x the target (some will fail
-  // verification and be dropped).
+  // MAIN provider first: our own Web Hunter (search the web, crawl the
+  // company's own site, extract emails it published itself). Third-party
+  // APIs (Prospeo -> Apollo -> Hunter) are SECONDARY: they only top up
+  // when the Web Hunter found fewer than the target.
   const raw: ProviderLead[] = [];
   const providersUsed: string[] = [];
   const providerErrors: string[] = [];
+  if (webConfigured) {
+    const web = await huntWebLeads({ pillar: params.pillar, count, domains: params.domains });
+    if (web.configured) {
+      providersUsed.push("WEB");
+      for (const w of web.leads) {
+        raw.push({
+          companyName: w.companyName, domain: w.domain, industry: w.industry,
+          size: w.size, country: w.country, contactName: w.contactName,
+          contactEmail: w.contactEmail, contactTitle: w.contactTitle,
+          source: "WEB", sourceUrl: w.sourceUrl, verified: false,
+        });
+      }
+    }
+  }
   // Only report a provider as "used" when it actually answered. (Apollo's
   // free plan rejects search with HTTP 403 — listing it as used was a lie.)
   const collect = (r: { provider: string; leads: ProviderLead[]; error?: string }) => {

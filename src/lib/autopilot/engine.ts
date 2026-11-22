@@ -31,7 +31,7 @@ let autopilotConfig: AutopilotConfig = {
   minScoreToAutoDispatch: 80,
   maxDailyAutoSends: 50,
   targetPillars: ["CLIENT_MEETINGS", "INTERVIEW_COPILOT", "CUSTOMER_SUPPORT", "BILINGUAL_AI"],
-  activeSources: ["PROSPEO", "APOLLO"],
+  activeSources: ["WEB", "PROSPEO"],
   connectionChannel: "OMNICHANNEL",
   lastRunAt: null,
   nextRunScheduledAt: null,
