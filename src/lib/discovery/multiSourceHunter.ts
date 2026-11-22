@@ -17,7 +17,7 @@ import { huntRealLeads } from "@/lib/discovery/realHunter";
 import type { QualificationResult } from "@/lib/ai/qualify";
 import type { EmailVerificationStatus } from "@/lib/verification/emailVerifier";
 
-export type LeadSource = "APOLLO" | "PROSPEO" | "HUNTER" | "GOOGLE_SEARCH" | "LINKEDIN" | "FACEBOOK" | "WEBSITE_SCRAPER" | "MANUAL" | "CSV";
+export type LeadSource = "WEB" | "APOLLO" | "PROSPEO" | "HUNTER" | "GOOGLE_SEARCH" | "LINKEDIN" | "FACEBOOK" | "WEBSITE_SCRAPER" | "MANUAL" | "CSV";
 
 export interface HunterLeadProfile {
   name: string;
