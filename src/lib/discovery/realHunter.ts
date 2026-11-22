@@ -71,12 +71,30 @@ export async function huntRealLeads(params: {
   }
 
   const count = Math.min(params.count || 5, 25);
+  // Rotate the provider result page every hour. Without this, every cycle
+  // fetched page 1 and re-found the SAME companies forever — the daily
+  // "new leads" target could never be met after day 1.
+  const rotatingPage = (Math.floor(Date.now() / 3600000) % 20) + 1;
   const query: LeadSearchQuery = {
     titles: PILLAR_TITLES[params.pillar] || PILLAR_TITLES.CLIENT_MEETINGS,
     keywords: params.personaKeyword || "",
     domains: params.domains,
     count,
+    page: rotatingPage,
   };
+
+  // Skip companies/contacts already stored, so each run hunts NEW leads.
+  // If the DB is unreachable we continue with in-run dedupe only.
+  const knownEmails = new Set<string>();
+  const knownDomains = new Set<string>();
+  try {
+    const { prisma } = await import("@/lib/prisma");
+    const existing = await prisma.contact.findMany({ select: { email: true, company: { select: { domain: true } } } });
+    for (const c of existing) {
+      if (c.email) knownEmails.add(c.email.toLowerCase());
+      if (c.company?.domain) knownDomains.add(c.company.domain.toLowerCase());
+    }
+  } catch { /* DB offline — in-run dedupe still applies */ }
 
   // Waterfall: quality first (Prospeo), then breadth (Apollo), then Hunter
   // for known domains. Collect until we have ~2x the target (some will fail
@@ -105,6 +123,7 @@ export async function huntRealLeads(params: {
     const email = p.contactEmail.toLowerCase().trim();
     if (!email || seen.has(email)) continue;
     seen.add(email);
+    if (knownEmails.has(email) || knownDomains.has(p.domain.toLowerCase())) continue; // already in CRM
 
     const verification = p.verified
       ? await verifyEmail(email, "VALID")

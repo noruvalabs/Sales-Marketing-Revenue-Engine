@@ -45,6 +45,9 @@ export interface LeadSearchQuery {
   /** Company domains to find people at (Hunter finder path) */
   domains?: string[];
   count?: number;
+  /** Result page to fetch. Rotated by the hunter so repeated runs do not
+   *  keep returning the same first page of people. */
+  page?: number;
 }
 
 function cleanDomain(raw: string): string {
@@ -77,7 +80,7 @@ export async function searchProspeo(query: LeadSearchQuery): Promise<ProviderRes
       method: "POST",
       headers: { "Content-Type": "application/json", "X-KEY": apiKey },
       body: JSON.stringify({
-        page: 1,
+        page: query.page && query.page > 0 ? query.page : 1,
         filters,
       }),
     });
@@ -168,7 +171,7 @@ export async function searchApollo(query: LeadSearchQuery): Promise<ProviderResu
         person_titles: query.titles || [],
         q_keywords: query.keywords || "",
         per_page: Math.min(query.count || 10, 25),
-        page: 1,
+        page: query.page && query.page > 0 ? ((query.page - 1) % 10) + 1 : 1,
       }),
     });
     if (!res.ok) throw new Error(`Apollo HTTP ${res.status}`);

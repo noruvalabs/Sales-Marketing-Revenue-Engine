@@ -26,7 +26,10 @@ export interface SequenceDraft {
 }
 
 export function bookingUrl(): string {
-  return process.env.MEETING_BOOKING_URL || "https://cal.com/noruva-team/15min";
+  // No fallback guess: a hard-coded Cal.com URL here was never verified to
+  // exist. If MEETING_BOOKING_URL is not set, emails simply omit the link
+  // instead of sending prospects to an invented page.
+  return process.env.MEETING_BOOKING_URL || "";
 }
 
 export function buildSequence(params: {
@@ -91,7 +94,7 @@ Noruva Labs Revenue Team`,
     body:
 `Hi ${firstName},
 
-I'll close the loop here. If live-call support ever becomes a priority, you can grab 15 minutes whenever suits you: ${bookingUrl()}
+I'll close the loop here. If live-call support ever becomes a priority, happy to show you how it works.${bookingUrl() ? ` You can grab 15 minutes whenever suits you: ${bookingUrl()}` : ""}
 
 And the free sessions are there if you'd rather just try it: ai.noruvalabs.com
 
