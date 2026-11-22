@@ -71,30 +71,48 @@ export async function huntRealLeads(params: {
   }
 
   const count = Math.min(params.count || 5, 25);
+  // Rotate the provider result page every hour. Without this, every cycle
+  // fetched page 1 and re-found the SAME companies forever — the daily
+  // "new leads" target could never be met after day 1.
+  const rotatingPage = (Math.floor(Date.now() / 3600000) % 20) + 1;
   const query: LeadSearchQuery = {
     titles: PILLAR_TITLES[params.pillar] || PILLAR_TITLES.CLIENT_MEETINGS,
     keywords: params.personaKeyword || "",
     domains: params.domains,
     count,
+    page: rotatingPage,
   };
+
+  // Skip companies/contacts already stored, so each run hunts NEW leads.
+  // If the DB is unreachable we continue with in-run dedupe only.
+  const knownEmails = new Set<string>();
+  const knownDomains = new Set<string>();
+  try {
+    const { prisma } = await import("@/lib/prisma");
+    const existing = await prisma.contact.findMany({ select: { email: true, company: { select: { domain: true } } } });
+    for (const c of existing) {
+      if (c.email) knownEmails.add(c.email.toLowerCase());
+      if (c.company?.domain) knownDomains.add(c.company.domain.toLowerCase());
+    }
+  } catch { /* DB offline — in-run dedupe still applies */ }
 
   // Waterfall: quality first (Prospeo), then breadth (Apollo), then Hunter
   // for known domains. Collect until we have ~2x the target (some will fail
   // verification and be dropped).
   const raw: ProviderLead[] = [];
   const providersUsed: string[] = [];
-  if (providers.includes("PROSPEO")) {
-    const r = await searchProspeo(query); providersUsed.push("PROSPEO");
+  const providerErrors: string[] = [];
+  // Only report a provider as "used" when it actually answered. (Apollo's
+  // free plan rejects search with HTTP 403 — listing it as used was a lie.)
+  const collect = (r: { provider: string; leads: ProviderLead[]; error?: string }) => {
+    if (r.error) { providerErrors.push(`${r.provider}: ${r.error}`); return; }
+    providersUsed.push(r.provider);
     raw.push(...r.leads);
-  }
-  if (raw.length < count * 2 && providers.includes("APOLLO")) {
-    const r = await searchApollo(query); providersUsed.push("APOLLO");
-    raw.push(...r.leads);
-  }
-  if (raw.length < count * 2 && providers.includes("HUNTER") && (params.domains?.length || 0) > 0) {
-    const r = await searchHunter(query); providersUsed.push("HUNTER");
-    raw.push(...r.leads);
-  }
+  };
+  if (providers.includes("PROSPEO")) collect(await searchProspeo(query));
+  if (raw.length < count * 2 && providers.includes("APOLLO")) collect(await searchApollo(query));
+  if (raw.length < count * 2 && providers.includes("HUNTER") && (params.domains?.length || 0) > 0) collect(await searchHunter(query));
+  if (providerErrors.length > 0) console.warn("[discovery] provider errors:", providerErrors.join(" | "));
 
   // Dedupe by email, then verify — INVALID leads are dropped, never sent.
   const seen = new Set<string>();
@@ -105,6 +123,7 @@ export async function huntRealLeads(params: {
     const email = p.contactEmail.toLowerCase().trim();
     if (!email || seen.has(email)) continue;
     seen.add(email);
+    if (knownEmails.has(email) || knownDomains.has(p.domain.toLowerCase())) continue; // already in CRM
 
     const verification = p.verified
       ? await verifyEmail(email, "VALID")
@@ -137,7 +156,7 @@ export async function huntRealLeads(params: {
 
   return {
     configured: true,
-    message: `Found ${leads.length} real leads via ${providersUsed.join(" + ")} (${droppedInvalid} dropped as invalid emails). Only VALID emails can be auto-sent; RISKY/UNKNOWN wait in the approval queue.`,
+    message: `Found ${leads.length} real leads via ${providersUsed.join(" + ") || "no working provider"} (${droppedInvalid} dropped as invalid emails). Only VALID emails can be auto-sent; RISKY/UNKNOWN wait in the approval queue.${providerErrors.length ? ` Provider problems: ${providerErrors.join("; ")}` : ""}`,
     leads, droppedInvalid, providersUsed,
   };
 }

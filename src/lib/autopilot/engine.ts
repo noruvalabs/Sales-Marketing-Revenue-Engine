@@ -51,6 +51,25 @@ export function updateAutopilotConfig(updates: Partial<AutopilotConfig>) {
   return autopilotConfig;
 }
 
+/**
+ * How many outreach emails were ACTUALLY sent today, counted from the DB.
+ * The in-memory counter resets on every server restart, which used to let
+ * the engine exceed the daily cap after a restart. The DB count survives.
+ * Falls back to the in-memory counter when the DB is unreachable.
+ */
+async function getTodaySentCount(fallback: number): Promise<number> {
+  try {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const dbCount = await prisma.outreachDraft.count({
+      where: { status: "SENT", sentAt: { gte: start } },
+    });
+    return Math.max(dbCount, fallback);
+  } catch {
+    return fallback;
+  }
+}
+
 export async function runAutopilotCycle(customParams?: {
   pillar?: "CLIENT_MEETINGS" | "INTERVIEW_COPILOT" | "CUSTOMER_SUPPORT" | "BILINGUAL_AI";
   sources?: LeadSource[];
@@ -101,17 +120,41 @@ export async function runAutopilotCycle(customParams?: {
     dailyAutoDispatchedCount = 0;
     lastCycleDate = today;
   }
+  // Re-sync the daily counter from the DB so restarts cannot reset the cap.
+  dailyAutoDispatchedCount = await getTodaySentCount(dailyAutoDispatchedCount);
 
   for (const item of discovered) {
     const score = item.qualification.score;
-    // Paced Auto-Dispatch: score >= minScore, email verified VALID, auto-send allowed, and under daily cap (50)
+    // Candidate for auto-dispatch: score >= minScore, email verified VALID,
+    // auto-send allowed, and under daily cap (50). CANDIDATE ONLY — the lead
+    // is marked SENT further below, and only if the dispatcher confirms the
+    // email really went out. (Bug fix: this used to mark SENT before/regardless
+    // of the dispatch result, so failed or simulated sends looked successful.)
     const autoSendAllowed = process.env.AUTOPILOT_ALLOW_AUTO_SEND === "true";
     const underDailyCap = dailyAutoDispatchedCount < autopilotConfig.maxDailyAutoSends;
-    const isUltraHighFit =
+    const isCandidate =
       score >= autopilotConfig.minScoreToAutoDispatch &&
       item.emailVerification === "VALID" &&
       autoSendAllowed &&
       underDailyCap;
+
+    // 4. Autonomous dispatch FIRST — record only what really happened.
+    let actuallySent = false;
+    let dispatchNote: string | undefined;
+    if (isCandidate) {
+      const result = await connectLeadAutonomously(item, autopilotConfig.connectionChannel);
+      actuallySent = result.emailDispatched;
+      dispatchNote = result.emailStatus;
+      if (actuallySent) {
+        autoDispatchedCount++;
+        dailyAutoDispatchedCount++;
+        autoDispatchedCompanies.push(`${item.name} (${item.source} - Score ${score})`);
+      } else {
+        console.warn(
+          `[Autopilot] Dispatch to ${item.contactEmail} did NOT send: ${dispatchNote || "unknown reason"}. Lead stays in Approvals.`
+        );
+      }
+    }
 
     const companyRecord: any = {
       id: `auto-${Date.now()}-${Math.random().toString(36).substring(7)}`,
@@ -138,30 +181,21 @@ export async function runAutopilotCycle(customParams?: {
           lastName: item.contactName.split(" ").slice(1).join(" ") || "Lead",
           title: item.contactTitle,
           email: item.contactEmail,
-          status: isUltraHighFit ? "OUTREACH_ACTIVE" : "DRAFT_PENDING_APPROVAL",
+          status: actuallySent ? "OUTREACH_ACTIVE" : "DRAFT_PENDING_APPROVAL",
         },
       ],
       draft: {
         id: `d-${Date.now()}-${Math.random().toString(36).substring(7)}`,
         subject: item.qualification.emailDraft.subject,
         body: item.qualification.emailDraft.body,
-        status: isUltraHighFit ? "SENT" : "PENDING_APPROVAL",
-        sentAt: isUltraHighFit ? new Date().toISOString() : null,
+        status: actuallySent ? "SENT" : "PENDING_APPROVAL",
+        sentAt: actuallySent ? new Date().toISOString() : null,
       },
       deal: {
-        stage: isUltraHighFit ? "CONTACTED" : "QUALIFIED_LEAD",
+        stage: actuallySent ? "CONTACTED" : "QUALIFIED_LEAD",
         valueMrr: score * 6,
       },
     };
-
-    // 4. Autonomous Omni-Channel Connection (Zero Human Command Required)
-    if (isUltraHighFit) {
-      await connectLeadAutonomously(item, autopilotConfig.connectionChannel);
-
-      autoDispatchedCount++;
-      dailyAutoDispatchedCount++;
-      autoDispatchedCompanies.push(`${item.name} (${item.source} - Score ${score})`);
-    }
 
     // Persist to DB if available
     try {
@@ -195,16 +229,18 @@ export async function runAutopilotCycle(customParams?: {
                 title: companyRecord.contacts[0].title,
                 email: companyRecord.contacts[0].email,
                 source: companyRecord.source,
-                emailVerification: item.emailVerification || "VALID",
-                status: isUltraHighFit ? "OUTREACH_ACTIVE" : "DRAFT_PENDING_APPROVAL",
+                // Never default a missing verdict to VALID — that would let
+                // an unverified email look verified in the CRM.
+                emailVerification: item.emailVerification || "UNKNOWN",
+                status: actuallySent ? "OUTREACH_ACTIVE" : "DRAFT_PENDING_APPROVAL",
                 outreachDrafts: {
                   create: [
                     {
                       subject: companyRecord.draft.subject,
                       body: companyRecord.draft.body,
                       evidenceUrl: item.researchEvidenceUrl,
-                      status: isUltraHighFit ? "SENT" : "PENDING_APPROVAL",
-                      sentAt: isUltraHighFit ? new Date() : null,
+                      status: actuallySent ? "SENT" : "PENDING_APPROVAL",
+                      sentAt: actuallySent ? new Date() : null,
                     },
                   ],
                 },
@@ -214,7 +250,7 @@ export async function runAutopilotCycle(customParams?: {
           deals: {
             create: [
               {
-                stage: isUltraHighFit ? "CONTACTED" : "QUALIFIED_LEAD",
+                stage: actuallySent ? "CONTACTED" : "QUALIFIED_LEAD",
                 valueMrr: companyRecord.deal.valueMrr,
               },
             ],
@@ -239,16 +275,16 @@ export async function runAutopilotCycle(customParams?: {
             title: companyRecord.contacts[0].title,
             email: companyRecord.contacts[0].email,
             source: companyRecord.source,
-            emailVerification: item.emailVerification || "VALID",
-            status: isUltraHighFit ? "OUTREACH_ACTIVE" : "DRAFT_PENDING_APPROVAL",
+            emailVerification: item.emailVerification || "UNKNOWN",
+            status: actuallySent ? "OUTREACH_ACTIVE" : "DRAFT_PENDING_APPROVAL",
             outreachDrafts: {
               create: [
                 {
                   subject: companyRecord.draft.subject,
                   body: companyRecord.draft.body,
                   evidenceUrl: item.researchEvidenceUrl,
-                  status: isUltraHighFit ? "SENT" : "PENDING_APPROVAL",
-                  sentAt: isUltraHighFit ? new Date() : null,
+                  status: actuallySent ? "SENT" : "PENDING_APPROVAL",
+                  sentAt: actuallySent ? new Date() : null,
                 },
               ],
             },
@@ -268,7 +304,7 @@ export async function runAutopilotCycle(customParams?: {
   autopilotConfig.nextRunScheduledAt = new Date(now.getTime() + 3600000 * 6).toISOString();
 
   const sourcesList = Array.from(new Set(discovered.map((d) => d.source)));
-  const cycleSummary = `Autonomous Cycle Complete: Hunted ${discovered.length} accounts via [${sourcesList.join(", ")}]. ${autoDispatchedCount} scored ≥ ${autopilotConfig.minScoreToAutoDispatch} and were auto-connected via ${autopilotConfig.connectionChannel}.`;
+  const cycleSummary = `Autonomous Cycle Complete: Hunted ${discovered.length} accounts via [${sourcesList.join(", ")}]. ${autoDispatchedCount} scored ≥ ${autopilotConfig.minScoreToAutoDispatch}, passed verification and were really dispatched via ${autopilotConfig.connectionChannel}.`;
 
   const newLog: AutopilotLogEntry = {
     id: `log-${Date.now()}`,
