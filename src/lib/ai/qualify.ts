@@ -58,7 +58,7 @@ Return a clean JSON object ONLY (no markdown formatting, no code block) with:
 `;
 
       const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash-lite",
+        model: "gemini-3.5-flash-lite",
         contents: prompt,
       });
 

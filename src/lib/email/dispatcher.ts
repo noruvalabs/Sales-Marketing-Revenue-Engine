@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { assertSendable, type EmailVerificationStatus } from "@/lib/verification/emailVerifier";
+import { getDailySendCap } from "@/lib/settings";
 
 export interface SendEmailParams {
   toEmail: string;
@@ -55,7 +56,9 @@ export async function sendOutreachEmail(params: SendEmailParams): Promise<SendEm
   }
 
   // 2. Check Daily Send Limits (Anti-Spam & Domain Warmup Protection)
-  const maxDaily = Number(process.env.MAX_DAILY_SENDS_PER_INBOX) || 35;
+  // One shared cap (src/lib/settings.ts): the number the admin sets in
+  // the dashboard. Applies to manual sends too, not just autopilot.
+  const maxDaily = getDailySendCap();
   const today = new Date().toDateString();
   if (today !== lastResetDate) {
     dailySendCount = 0;
