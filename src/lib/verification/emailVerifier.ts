@@ -171,6 +171,56 @@ export function canSendOutreach(params: {
   }
 }
 
+/**
+ * The final wall before ANY send (added at Sazzad's direction, 2026-11-23:
+ * "mail is only sent to existing real mail"). The dispatcher calls this on
+ * every single send — there is no path around it:
+ *
+ *   known INVALID -> blocked forever
+ *   known VALID   -> allowed (a real verifier proved the mailbox exists)
+ *   known RISKY   -> allowed only with a human's single-send override
+ *   UNKNOWN/none  -> a FRESH verification runs right now; only a fresh
+ *                    VALID (or RISKY + human override) may send
+ *
+ * Fail closed: if no verifier can prove the mailbox exists, we do not send.
+ */
+export async function assertSendable(
+  email: string,
+  knownStatus?: EmailVerificationStatus,
+  manualOverride?: boolean
+): Promise<{ allowed: boolean; status: EmailVerificationStatus; reason: string }> {
+  const syntax = checkEmailSyntax(email);
+  if (!syntax.ok) {
+    return { allowed: false, status: "INVALID", reason: syntax.reason };
+  }
+  if (knownStatus === "VALID") {
+    return { allowed: true, status: "VALID", reason: "Email verified VALID by a real verifier" };
+  }
+  if (knownStatus === "INVALID") {
+    return { allowed: false, status: "INVALID", reason: "Email verified INVALID — never send" };
+  }
+  if (knownStatus === "RISKY") {
+    return manualOverride
+      ? { allowed: true, status: "RISKY", reason: "RISKY (catch-all) — human manual override for a single send" }
+      : { allowed: false, status: "RISKY", reason: "Email is RISKY (catch-all or uncertain). A human must override for a single manual send; autopilot never sends to RISKY." };
+  }
+  // UNKNOWN or no verdict on record: verify fresh, right now.
+  const fresh = await verifyEmail(email);
+  if (fresh.status === "VALID") {
+    return { allowed: true, status: "VALID", reason: `Freshly verified VALID (${fresh.source})` };
+  }
+  if (fresh.status === "RISKY") {
+    return manualOverride
+      ? { allowed: true, status: "RISKY", reason: "Fresh check: RISKY (catch-all) — human manual override for a single send" }
+      : { allowed: false, status: "RISKY", reason: "Fresh check: RISKY (catch-all or uncertain) — needs a human override; autopilot never sends" };
+  }
+  return {
+    allowed: false,
+    status: fresh.status,
+    reason: `Not proven real (${fresh.status}: ${fresh.reason}). Mail is only sent to verified, existing mailboxes.`,
+  };
+}
+
 /** True when an address looks invented by pattern (first@, ceo@, etc.). */
 export function looksGuessed(email: string, firstName?: string): boolean {
   const e = (email || "").trim().toLowerCase();

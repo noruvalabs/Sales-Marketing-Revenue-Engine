@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { canSendOutreach, type EmailVerificationStatus } from "@/lib/verification/emailVerifier";
+import { assertSendable, type EmailVerificationStatus } from "@/lib/verification/emailVerifier";
 
 export interface SendEmailParams {
   toEmail: string;
@@ -43,17 +43,15 @@ export async function sendOutreachEmail(params: SendEmailParams): Promise<SendEm
     };
   }
 
-  // 1b. Verification gate — runs before limits/suppression so a blocked
-  // address never consumes send quota. Enforced only when the caller
-  // supplied a verdict; routes that load the contact from DB do.
-  if (params.emailVerificationStatus !== undefined) {
-    const gate = canSendOutreach({
-      verificationStatus: params.emailVerificationStatus,
-      manualOverride: params.manualOverride,
-    });
-    if (!gate.allowed) {
-      return { success: false, error: `Verification gate: ${gate.reason}` };
-    }
+  // 1b. Verification gate — ALWAYS runs, on every send, before limits and
+  // suppression so a blocked address never consumes send quota. Mail is
+  // only sent to existing, real mailboxes: a stored VALID passes; RISKY
+  // needs a human override; INVALID never passes; and when there is no
+  // verdict on record, assertSendable verifies the address fresh, right
+  // now, and blocks it if no verifier can prove the mailbox exists.
+  const gate = await assertSendable(toEmail, params.emailVerificationStatus, params.manualOverride);
+  if (!gate.allowed) {
+    return { success: false, error: `Verification gate: ${gate.reason}` };
   }
 
   // 2. Check Daily Send Limits (Anti-Spam & Domain Warmup Protection)

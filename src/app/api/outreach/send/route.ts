@@ -21,7 +21,8 @@ export async function POST(req: Request) {
           where: { id: draftId }, include: { contact: true },
         });
         if (draft?.contact) emailVerificationStatus = draft.contact.emailVerification || "UNKNOWN";
-      } catch { /* DB unreachable — gate stays unset, simulated mode still safe */ }
+      } catch { /* DB unreachable — status stays unset, and the dispatcher's
+                   always-on gate then verifies fresh and fails closed */ }
     }
 
     // 1. Dispatch Email through the Safe Dispatcher
