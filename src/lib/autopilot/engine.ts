@@ -1,6 +1,7 @@
 import { huntMultiSourceLeads, HunterLeadProfile, LeadSource } from "@/lib/discovery/multiSourceHunter";
 import { connectLeadAutonomously, ConnectionChannel } from "@/lib/connectors/channelConnector";
 import { prisma } from "@/lib/prisma";
+import { getDailySendCap, setDailySendCap } from "@/lib/settings";
 
 export interface AutopilotLogEntry {
   id: string;
@@ -29,7 +30,7 @@ let lastCycleDate = new Date().toDateString();
 let autopilotConfig: AutopilotConfig = {
   enabled: true,
   minScoreToAutoDispatch: 80,
-  maxDailyAutoSends: 50,
+  maxDailyAutoSends: getDailySendCap(),
   targetPillars: ["CLIENT_MEETINGS", "INTERVIEW_COPILOT", "CUSTOMER_SUPPORT", "BILINGUAL_AI"],
   activeSources: ["WEB", "PROSPEO"],
   connectionChannel: "OMNICHANNEL",
@@ -47,6 +48,11 @@ export function getAutopilotState() {
 }
 
 export function updateAutopilotConfig(updates: Partial<AutopilotConfig>) {
+  // Keep the shared settings store in sync so the email dispatcher
+  // enforces the SAME cap the admin sees in the dashboard.
+  if (updates.maxDailyAutoSends !== undefined) {
+    updates = { ...updates, maxDailyAutoSends: setDailySendCap(updates.maxDailyAutoSends) };
+  }
   autopilotConfig = { ...autopilotConfig, ...updates };
   return autopilotConfig;
 }
