@@ -6,8 +6,10 @@
  *
  * How it works:
  *   1. SEARCH  — find companies on the open web matching the pillar's
- *      buyer profile (Tavily search API when TAVILY_API_KEY is set;
- *      seed domains can also be passed directly).
+ *      buyer profile, through up to three search doors tried in order:
+ *      Tavily (TAVILY_API_KEY), Serper/Google (SERPER_API_KEY), and
+ *      Gemini with Google Search grounding (GEMINI_API_KEY). Seed
+ *      domains can also be passed directly.
  *   2. CRAWL   — visit each company's own website (home, contact, about,
  *      team, careers pages) with a polite user-agent and small delays.
  *   3. EXTRACT — pull only emails the company PUBLISHED itself (mailto
@@ -218,11 +220,80 @@ async function crawlCompany(domain: string): Promise<WebLead | null> {
   };
 }
 
-/** Find candidate company domains via Tavily web search. */
+/**
+ * Third search door: ask Gemini (Google Search grounding) for company
+ * websites matching a query. Gemini returns an answer, not a results
+ * list, so we require a strict JSON array in the reply AND merge in the
+ * grounding source URIs from the response metadata (resolving Google's
+ * redirect links to the real sites). Throws on HTTP errors so the
+ * caller can record the reason — e.g. HTTP 429 means the API key's
+ * tier has no grounded-search quota left (the free tier has none).
+ */
+export async function searchViaGemini(query: string, maxResults: number): Promise<string[]> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return [];
+  const model = process.env.GEMINI_SEARCH_MODEL || "gemini-3.5-flash-lite";
+  const prompt = [
+    `Search the web for: ${query}`,
+    `Return up to ${maxResults} real company websites that match.`,
+    "Respond with ONLY a JSON array, no other text:",
+    '[{"url": "https://example.com", "title": "Company name", "snippet": "one line about the company"}]',
+  ].join("\n");
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        tools: [{ google_search: {} }],
+      }),
+      signal: AbortSignal.timeout(45000),
+    }
+  );
+  if (!res.ok) {
+    const body: any = await res.json().catch(() => ({}));
+    throw new Error(`HTTP ${res.status}: ${String(body?.error?.message || "search failed").slice(0, 140)}`);
+  }
+  const data: any = await res.json();
+  const candidate = data?.candidates?.[0];
+  const hosts: string[] = [];
+  const addUrl = (u: string) => {
+    const host = cleanDomain(u || "");
+    if (host && !hosts.includes(host)) hosts.push(host);
+  };
+  // 1) The JSON array in the model's reply (real URLs, as answered).
+  const text = (candidate?.content?.parts || []).map((p: any) => p.text || "").join("");
+  const jsonMatch = text.match(/\[[\s\S]*\]/);
+  if (jsonMatch) {
+    try {
+      const arr = JSON.parse(jsonMatch[0]);
+      if (Array.isArray(arr)) for (const item of arr) addUrl(item?.url || "");
+    } catch { /* fall through to grounding sources */ }
+  }
+  // 2) Grounding source URIs — these are Google redirect links, so
+  // resolve each to the real site before taking its domain.
+  const chunks = candidate?.groundingMetadata?.groundingChunks || [];
+  for (const c of chunks) {
+    const uri = c?.web?.uri;
+    if (!uri) continue;
+    if (!uri.includes("vertexaisearch") && !uri.includes("grounding-api-redirect")) {
+      addUrl(uri);
+      continue;
+    }
+    try {
+      const head = await fetch(uri, { redirect: "follow", signal: AbortSignal.timeout(10000) });
+      if (head.url) addUrl(head.url);
+    } catch { /* skip unresolvable source */ }
+    if (hosts.length >= maxResults) break;
+  }
+  return hosts.slice(0, maxResults);
+}
+
+/** Find candidate company domains via the search doors, in order. */
 let lastSearchError = "";
 async function searchCompanyDomains(pillar: string, limit: number): Promise<string[]> {
   const apiKey = process.env.TAVILY_API_KEY;
-  if (!apiKey) return [];
   const queries = PILLAR_QUERIES[pillar] || PILLAR_QUERIES.CLIENT_MEETINGS;
   const domains: string[] = [];
   const skipHosts = [
@@ -240,7 +311,10 @@ async function searchCompanyDomains(pillar: string, limit: number): Promise<stri
     "toptal.com", "upwork.com", "fiverr.com", "freelancer.com",
     "producthunt.com", "clutch.co", "goodfirms.co", "trustpilot.com",
   ];
-  for (const q of queries) {
+  // First search door: Tavily (only when its key is set — without this
+  // guard, a missing Tavily key used to end the search here and the
+  // Serper and Gemini doors below never ran).
+  for (const q of apiKey ? queries : []) {
     try {
       const res = await fetch("https://api.tavily.com/search", {
         method: "POST",
@@ -285,6 +359,23 @@ async function searchCompanyDomains(pillar: string, limit: number): Promise<stri
       } catch { /* try next query */ }
     }
   }
+  // Third search door: Gemini with Google Search grounding. Used when
+  // the first two doors are missing, out of credits, or return too few.
+  if (domains.length < limit && process.env.GEMINI_API_KEY) {
+    for (const q of queries) {
+      try {
+        const found = await searchViaGemini(q, 10);
+        for (const host of found) {
+          if (skipHosts.some((s) => host.endsWith(s))) continue;
+          if (!domains.includes(host)) domains.push(host);
+          if (domains.length >= limit) return domains;
+        }
+      } catch (e: any) {
+        lastSearchError = `Gemini search ${e.message}`;
+      }
+      if (domains.length >= limit) break;
+    }
+  }
   return domains;
 }
 
@@ -297,11 +388,11 @@ export async function huntWebLeads(params: {
   let domains = (params.domains || []).map(cleanDomain).filter(Boolean);
 
   if (domains.length === 0) {
-    if (!process.env.TAVILY_API_KEY && !process.env.SERPER_API_KEY) {
+    if (!process.env.TAVILY_API_KEY && !process.env.SERPER_API_KEY && !process.env.GEMINI_API_KEY) {
       return {
         configured: false,
         message:
-          "Web Hunter needs a search source: add TAVILY_API_KEY or SERPER_API_KEY (both have free tiers, no card) or pass seed domains. It never invents companies.",
+          "Web Hunter needs a search source: add TAVILY_API_KEY, SERPER_API_KEY or GEMINI_API_KEY, or pass seed domains. It never invents companies.",
         leads: [], companiesChecked: 0, companiesWithEmail: 0,
       };
     }
