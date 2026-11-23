@@ -21,7 +21,8 @@ export async function POST(req: Request) {
           where: { id: draftId }, include: { contact: true },
         });
         if (draft?.contact) emailVerificationStatus = draft.contact.emailVerification || "UNKNOWN";
-      } catch { /* DB unreachable — gate stays unset, simulated mode still safe */ }
+      } catch { /* DB unreachable — status stays unset, and the dispatcher's
+                   always-on gate then verifies fresh and fails closed */ }
     }
 
     // 1. Dispatch Email through the Safe Dispatcher
@@ -47,8 +48,10 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2. Update Database Records if draftId exists
-    if (draftId) {
+    // 2. Update Database Records if draftId exists.
+    // Simulated dispatches (no mail account configured) sent nothing -
+    // the draft must NOT be stamped SENT for them.
+    if (draftId && !dispatchResult.simulated) {
       try {
         await prisma.outreachDraft.update({
           where: { id: draftId },
