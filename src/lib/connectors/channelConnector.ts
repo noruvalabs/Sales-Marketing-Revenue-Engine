@@ -48,9 +48,14 @@ export async function connectLeadAutonomously(
         emailVerificationStatus: lead.emailVerification || "UNKNOWN",
       });
 
-      result.emailDispatched = emailRes.success;
-      result.emailStatus = emailRes.success
-        ? `Sent (ID: ${emailRes.messageId || "simulated"})`
+      // A simulated dispatch (no mail account configured) sent NOTHING.
+      // It must never count as dispatched - otherwise the engine would
+      // mark the draft SENT for an email that does not exist.
+      result.emailDispatched = emailRes.success && !emailRes.simulated;
+      result.emailStatus = emailRes.simulated
+        ? "SIMULATED ONLY - no mail account configured, nothing was sent"
+        : emailRes.success
+        ? `Sent (ID: ${emailRes.messageId})`
         : `Failed: ${emailRes.error || "Unknown error"}`;
     } catch (err: any) {
       result.emailStatus = `Email dispatch failed: ${err.message}`;

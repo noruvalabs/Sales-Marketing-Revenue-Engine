@@ -47,8 +47,10 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2. Update Database Records if draftId exists
-    if (draftId) {
+    // 2. Update Database Records if draftId exists.
+    // Simulated dispatches (no mail account configured) sent nothing -
+    // the draft must NOT be stamped SENT for them.
+    if (draftId && !dispatchResult.simulated) {
       try {
         await prisma.outreachDraft.update({
           where: { id: draftId },
