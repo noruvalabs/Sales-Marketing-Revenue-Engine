@@ -187,6 +187,10 @@ export async function runAutopilotCycle(customParams?: {
           lastName: item.contactName.split(" ").slice(1).join(" ") || "Lead",
           title: item.contactTitle,
           email: item.contactEmail,
+          // Phone for the AI Call Agent (develop2): brought by the hunter
+          // (Prospeo mobile reveal or a number published on the company
+          // website). Null when the hunter found none.
+          phone: item.contactPhone || null,
           status: actuallySent ? "OUTREACH_ACTIVE" : "DRAFT_PENDING_APPROVAL",
         },
       ],
@@ -234,6 +238,8 @@ export async function runAutopilotCycle(customParams?: {
                 lastName: companyRecord.contacts[0].lastName,
                 title: companyRecord.contacts[0].title,
                 email: companyRecord.contacts[0].email,
+                phone: companyRecord.contacts[0].phone || null,
+                phoneSource: companyRecord.contacts[0].phone ? companyRecord.source : null,
                 source: companyRecord.source,
                 // Never default a missing verdict to VALID — that would let
                 // an unverified email look verified in the CRM.
@@ -280,6 +286,8 @@ export async function runAutopilotCycle(customParams?: {
             lastName: companyRecord.contacts[0].lastName,
             title: companyRecord.contacts[0].title,
             email: companyRecord.contacts[0].email,
+            phone: companyRecord.contacts[0].phone || null,
+            phoneSource: companyRecord.contacts[0].phone ? companyRecord.source : null,
             source: companyRecord.source,
             emailVerification: item.emailVerification || "UNKNOWN",
             status: actuallySent ? "OUTREACH_ACTIVE" : "DRAFT_PENDING_APPROVAL",

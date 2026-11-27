@@ -74,6 +74,7 @@ export async function huntMultiSourceLeads(params: MultiSourceHuntParams): Promi
     contactName: l.contactName,
     contactEmail: l.contactEmail,
     contactTitle: l.contactTitle,
+    contactPhone: l.contactPhone,
     linkedinUrl: l.linkedinUrl,
     qualification: l.qualification,
     // A draft note for a HUMAN to send manually on LinkedIn. LinkedIn

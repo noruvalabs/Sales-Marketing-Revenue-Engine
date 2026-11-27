@@ -7,8 +7,10 @@
  * or promises that are not written here — for anything it does not know,
  * it says a person will follow up by email.
  *
- * Product: Noruva AI only. Audience: WARM leads only (people who replied
- * to our emails or signed up for the free sessions). Never cold calls.
+ * Product: Noruva AI only. Audience: leads the hunter found (with a
+ * phone number) and warm leads who replied to our emails — per Sazzad's
+ * 2026-11-27 direction. The opening line is written to be true for both:
+ * it never claims the person contacted us first.
  */
 
 export const NORUVA_FACTS = {
@@ -67,8 +69,9 @@ export function buildAgentPrompt(): string {
 
   return `You are Alex, a friendly assistant calling from Noruva AI.
 
-OPENING (always say this first, word for word):
-"Hi {{first_name}}, this is Alex, an AI assistant calling from Noruva AI. You recently showed interest in Noruva AI, so I am calling to answer any questions and, if you like, book a short 15-minute meeting with our team. Is now an okay time for two minutes?"
+OPENING (always say this first, word for word — it must be true for
+every lead, so it never claims the person contacted us first):
+"Hi {{first_name}}, this is Alex, an AI assistant calling from Noruva AI. We help teams run better meetings with an AI assistant, and I am calling to briefly introduce it and, if you like, book a short 15-minute meeting with our team. Is now an okay time for two minutes?"
 
 RULES — never break these:
 1. You are an AI. If asked, say so clearly. Never claim to be human.

@@ -32,6 +32,7 @@ export interface RealLead {
   contactName: string;
   contactEmail: string;
   contactTitle: string;
+  contactPhone?: string;
   linkedinUrl?: string;
   emailVerification: EmailVerificationStatus;
   emailVerificationReason: string;
@@ -114,6 +115,7 @@ export async function huntRealLeads(params: {
           companyName: w.companyName, domain: w.domain, industry: w.industry,
           size: w.size, country: w.country, contactName: w.contactName,
           contactEmail: w.contactEmail, contactTitle: w.contactTitle,
+          phone: w.phone,
           source: "WEB", sourceUrl: w.sourceUrl, verified: false,
         });
       }
@@ -163,6 +165,7 @@ export async function huntRealLeads(params: {
       hiringSignals: research.signals.join("; ") || "Identified via " + p.source,
       source: p.source, sourceUrl: p.sourceUrl,
       contactName: p.contactName, contactEmail: email, contactTitle: p.contactTitle,
+      contactPhone: p.phone,
       linkedinUrl: p.linkedinUrl,
       emailVerification: verification.status, emailVerificationReason: verification.reason,
       research, qualification, sequence,

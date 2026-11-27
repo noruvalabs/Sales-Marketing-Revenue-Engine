@@ -3,16 +3,24 @@ import { prisma } from "@/lib/prisma";
 /**
  * AI Call Agent — who may be called (develop2, TEST ONLY).
  *
- * Warm leads ONLY: the person must have REPLIED to one of our emails
- * (status REPLIED_INTERESTED or REPLIED_OBJECTION). A cold contact can
- * never be queued, even by hand — US law treats an AI sales voice call
- * to a mobile phone as a robocall, which needs prior consent.
+ * Rule history: the first build allowed WARM leads only (people who
+ * replied to our emails). On 2026-11-27 Sazzad directed that the lead
+ * finder should also bring phone numbers for discovered leads and that
+ * the call agent should call them to introduce the project. The guard
+ * now follows that direction: any saved lead WITH a phone number may
+ * be queued.
  *
- * Also blocked: anyone on the Suppression List (by email or company
- * domain) and anyone who opted out.
+ * Hard blocks that still always apply:
+ * - OPTED_OUT contacts — never called, no exceptions.
+ * - Anyone on the Suppression List (by email or company domain).
+ * - A contact with no phone number cannot be queued.
+ *
+ * Known risk, stated plainly (also in docs/CALL_AGENT.md): US law
+ * treats an AI-voice sales call to a mobile phone as a robocall and
+ * may require prior consent; business/landline numbers are lower risk.
+ * The script always discloses it is an AI, and every call is started
+ * by a human click — there is no bulk auto-dialler.
  */
-
-const WARM_STATUSES = ["REPLIED_INTERESTED", "REPLIED_OBJECTION"];
 
 export interface CallableCheck {
   ok: boolean;
@@ -30,14 +38,11 @@ export async function assertCallable(contactId: string): Promise<CallableCheck> 
   if (contact.status === "OPTED_OUT") {
     return { ok: false, reason: "Contact opted out — never call" };
   }
-  if (!WARM_STATUSES.includes(contact.status)) {
+  if (!contact.phone) {
     return {
       ok: false,
-      reason: `Not a warm lead (status ${contact.status}). Only people who replied to our emails can be called.`,
+      reason: "No phone number yet — the hunter brings numbers for new leads, or reveal this one (Prospeo, 10 credits)",
     };
-  }
-  if (!contact.phone) {
-    return { ok: false, reason: "No phone number yet — reveal the mobile first (Prospeo, 10 credits)" };
   }
 
   const domain = contact.company?.domain || "";

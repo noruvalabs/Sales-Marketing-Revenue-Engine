@@ -180,13 +180,15 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
   // replied to our emails. Queue -> start one call -> results land here.
   const [callsData, setCallsData] = useState<{
     config: { enabled: boolean; configured: boolean; missing: string[] };
-    eligible: any[];
+    callable: any[];
+    needPhone: any[];
     queue: any[];
     history: any[];
     queuedContactIds: string[];
   }>({
     config: { enabled: false, configured: false, missing: [] },
-    eligible: [],
+    callable: [],
+    needPhone: [],
     queue: [],
     history: [],
     queuedContactIds: [],
@@ -201,7 +203,8 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
       if (data.success) {
         setCallsData({
           config: data.config,
-          eligible: data.eligible || [],
+          callable: data.callable || [],
+          needPhone: data.needPhone || [],
           queue: data.queue || [],
           history: data.history || [],
           queuedContactIds: data.queuedContactIds || [],
@@ -1635,8 +1638,10 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
                   <span>AI Call Agent — TEST (develop2)</span>
                 </h3>
                 <p className="text-xs text-slate-400">
-                  Warm leads only: people who replied to our emails. The AI introduces itself as an AI,
-                  uses one fixed script, and can only book the 15-minute meeting.
+                  Same lead finder as email — it now also saves phone numbers (Prospeo reveal, or numbers
+                  published on the company website). Queue a lead, start the call, and the AI introduces
+                  Noruva AI with one fixed script. It always says it is an AI. Opted-out and suppressed
+                  contacts are blocked automatically.
                 </p>
               </div>
               <button
@@ -1687,36 +1692,79 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
-              {/* Warm leads */}
-              <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl overflow-hidden">
-                <div className="px-5 py-3 border-b border-slate-800 flex items-center justify-between">
-                  <span className="text-sm font-bold text-white">Warm leads (replied)</span>
-                  <span className="text-xs bg-sky-500/10 text-sky-400 px-2.5 py-0.5 rounded-full border border-sky-500/20">
-                    {callsData.eligible.length} people
-                  </span>
+              {/* Leads with phone numbers + warm leads without one */}
+              <div className="space-y-4">
+                <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl overflow-hidden">
+                  <div className="px-5 py-3 border-b border-slate-800 flex items-center justify-between">
+                    <span className="text-sm font-bold text-white">Leads with phone numbers</span>
+                    <span className="text-xs bg-sky-500/10 text-sky-400 px-2.5 py-0.5 rounded-full border border-sky-500/20">
+                      {callsData.callable.length} people
+                    </span>
+                  </div>
+                  {callsData.callable.length === 0 ? (
+                    <p className="px-5 py-8 text-xs text-slate-400 text-center">
+                      No phone numbers yet. New hunts save numbers automatically — Prospeo mobiles need
+                      PROSPEO_REVEAL_MOBILE=true (10 credits each); numbers published on company websites are free.
+                    </p>
+                  ) : (
+                    <div className="divide-y divide-slate-800/70">
+                      {callsData.callable.map((c: any) => (
+                        <div key={c.id} className="px-5 py-3 space-y-1">
+                          <div className="flex items-center justify-between space-x-2">
+                            <span className="text-xs font-bold text-white truncate">
+                              {c.name} · {c.companyName}
+                            </span>
+                            <span className="text-[10px] font-bold uppercase tracking-wider bg-sky-500/15 text-sky-400 border border-sky-500/30 px-2 py-0.5 rounded whitespace-nowrap">
+                              {c.phoneSource || c.status}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-400 truncate">
+                            {c.phone} · {c.email}
+                          </div>
+                          <div className="flex space-x-2 pt-1">
+                            {!callsData.queuedContactIds.includes(c.id) ? (
+                              <button
+                                disabled={callBusy === `queue-${c.id}`}
+                                onClick={() => callAction(`queue-${c.id}`, "/api/calls/queue", { contactId: c.id }, "Added to call queue")}
+                                className="text-[11px] bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold px-3 py-1.5 rounded-full"
+                              >
+                                Add to call queue
+                              </button>
+                            ) : (
+                              <span className="text-[11px] text-amber-400">In queue</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                {callsData.eligible.length === 0 ? (
-                  <p className="px-5 py-8 text-xs text-slate-400 text-center">
-                    No warm leads yet. When someone replies to an outreach email, they appear here.
-                  </p>
-                ) : (
-                  <div className="divide-y divide-slate-800/70">
-                    {callsData.eligible.map((c: any) => (
-                      <div key={c.id} className="px-5 py-3 space-y-1">
-                        <div className="flex items-center justify-between space-x-2">
-                          <span className="text-xs font-bold text-white truncate">
-                            {c.name} · {c.companyName}
-                          </span>
-                          <span className="text-[10px] font-bold uppercase tracking-wider bg-sky-500/15 text-sky-400 border border-sky-500/30 px-2 py-0.5 rounded whitespace-nowrap">
-                            {c.status === "REPLIED_INTERESTED" ? "Interested" : "Replied"}
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-slate-400 truncate">
-                          {c.email}
-                          {c.phone ? ` · ${c.phone}` : " · no phone number yet"}
-                        </div>
-                        <div className="flex space-x-2 pt-1">
-                          {!c.phone && (
+
+                <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl overflow-hidden">
+                  <div className="px-5 py-3 border-b border-slate-800 flex items-center justify-between">
+                    <span className="text-sm font-bold text-white">Warm leads — no phone yet</span>
+                    <span className="text-xs bg-slate-500/10 text-slate-300 px-2.5 py-0.5 rounded-full border border-slate-500/20">
+                      {callsData.needPhone.length} people
+                    </span>
+                  </div>
+                  {callsData.needPhone.length === 0 ? (
+                    <p className="px-5 py-8 text-xs text-slate-400 text-center">
+                      Nobody here. Warm leads who replied but have no number will appear for a one-click reveal.
+                    </p>
+                  ) : (
+                    <div className="divide-y divide-slate-800/70">
+                      {callsData.needPhone.map((c: any) => (
+                        <div key={c.id} className="px-5 py-3 space-y-1">
+                          <div className="flex items-center justify-between space-x-2">
+                            <span className="text-xs font-bold text-white truncate">
+                              {c.name} · {c.companyName}
+                            </span>
+                            <span className="text-[10px] font-bold uppercase tracking-wider bg-sky-500/15 text-sky-400 border border-sky-500/30 px-2 py-0.5 rounded whitespace-nowrap">
+                              {c.status === "REPLIED_INTERESTED" ? "Interested" : "Replied"}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-400 truncate">{c.email}</div>
+                          <div className="flex space-x-2 pt-1">
                             <button
                               disabled={callBusy === `reveal-${c.id}`}
                               onClick={() => callAction(`reveal-${c.id}`, "/api/calls/reveal-phone", { contactId: c.id }, "Phone number saved")}
@@ -1724,24 +1772,12 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
                             >
                               {callBusy === `reveal-${c.id}` ? "Revealing..." : "Reveal phone (10 Prospeo credits)"}
                             </button>
-                          )}
-                          {c.phone && !callsData.queuedContactIds.includes(c.id) && (
-                            <button
-                              disabled={callBusy === `queue-${c.id}`}
-                              onClick={() => callAction(`queue-${c.id}`, "/api/calls/queue", { contactId: c.id }, "Added to call queue")}
-                              className="text-[11px] bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold px-3 py-1.5 rounded-full"
-                            >
-                              Add to call queue
-                            </button>
-                          )}
-                          {c.phone && callsData.queuedContactIds.includes(c.id) && (
-                            <span className="text-[11px] text-amber-400">In queue below</span>
-                          )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Queue + history */}

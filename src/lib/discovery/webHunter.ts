@@ -44,6 +44,10 @@ export interface WebLead {
   hiringSignals: string;
   /** True when the address is a generic team inbox (hello@, info@…). */
   isRoleEmail: boolean;
+  /** Phone number the company PUBLISHED on its own site (tel: link or
+   *  visible text), if any. Same honesty rule as emails: only numbers
+   *  the company itself put on its website — never guessed. */
+  phone?: string;
 }
 
 export interface WebHuntResult {
@@ -146,6 +150,31 @@ export function extractEmails(html: string, domain: string): string[] {
   });
 }
 
+/**
+ * Extract phone numbers a page publishes itself. Exported for tests.
+ * tel: links are the strongest signal (the company made it callable);
+ * visible text is accepted only in international format (+…), with
+ * 8–15 digits, so dates, prices and local short numbers don't slip in.
+ * Returns the number normalized: leading + and digits only.
+ */
+export function extractPhones(html: string): string[] {
+  const found: string[] = [];
+  const push = (raw: string) => {
+    const digits = raw.replace(/\D/g, "");
+    if (digits.length < 8 || digits.length > 15) return;
+    const normalized = "+" + digits;
+    if (!found.includes(normalized)) found.push(normalized);
+  };
+  const tels = html.match(/href=["']tel:([^"'>]+)["']/gi) || [];
+  for (const t of tels) push(decodeURIComponent(t.replace(/href=["']tel:/i, "").replace(/["']$/, "")));
+  if (found.length > 0) return found;
+
+  const text = html.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ");
+  const hits = text.match(/\+\d[\d\s().-]{7,}\d/g) || [];
+  for (const h of hits) push(h);
+  return found;
+}
+
 function pickBestEmail(emails: string[]): { email: string; isRole: boolean } | null {
   if (emails.length === 0) return null;
   // Prefer a named-person address over a team inbox when both are published.
@@ -186,6 +215,7 @@ async function crawlCompany(domain: string): Promise<WebLead | null> {
   if (!d || !d.includes(".")) return null;
   const paths = ["", "/contact", "/contact-us", "/about", "/about-us", "/team", "/careers"];
   let allEmails: string[] = [];
+  let allPhones: string[] = [];
   let companyName = "";
   let signals = "";
   let firstHtml: string | null = null;
@@ -195,6 +225,7 @@ async function crawlCompany(domain: string): Promise<WebLead | null> {
     if (!html) continue;
     if (!firstHtml) firstHtml = html;
     allEmails = [...new Set([...allEmails, ...extractEmails(html, d)])];
+    allPhones = [...new Set([...allPhones, ...extractPhones(html)])];
     if (!signals) signals = hiringSignalsFromHtml(html);
     if (allEmails.length > 0 && path !== "" && path !== "/contact") break;
     await sleep(300);
@@ -217,6 +248,7 @@ async function crawlCompany(domain: string): Promise<WebLead | null> {
     sourceUrl: `https://${d}`,
     hiringSignals: signals || "Found via web search; public contact email published on company website",
     isRoleEmail: best.isRole,
+    phone: allPhones[0],
   };
 }
 

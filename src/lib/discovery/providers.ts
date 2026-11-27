@@ -24,6 +24,9 @@ export interface ProviderLead {
   contactName: string;
   contactEmail: string;
   contactTitle: string;
+  /** Phone/mobile when the source provides one (Prospeo mobile reveal,
+   *  or a number the company published on its own website). */
+  phone?: string;
   linkedinUrl?: string;
   source: LeadProviderName;
   sourceUrl?: string;
@@ -105,6 +108,17 @@ export async function searchProspeo(query: LeadSearchQuery): Promise<ProviderRes
       let size = p?.company?.employee_count?.toString();
       let country = p?.person?.location?.country || p?.company?.location?.country;
 
+      // Phone (develop2): take a mobile if the search result already
+      // carries one. A separate paid reveal happens below, behind a flag.
+      const phoneFromPerson = (src: any): string | undefined => {
+        const m =
+          src?.person?.mobile?.number || src?.person?.mobile_number || src?.person?.mobile ||
+          src?.person?.phone_number || src?.person?.phone ||
+          src?.mobile?.number || src?.mobile_number || src?.mobile || src?.phone_number || src?.phone;
+        return typeof m === "string" && m.replace(/\D/g, "").length >= 7 ? m : undefined;
+      };
+      let phone = phoneFromPerson(p);
+
       // If email is masked (e.g. s********@...) or not revealed, call enrich-person to reveal real email
       const personId = p?.person?.person_id || p?.person_id;
       if (personId && (!email || String(email).includes("*") || !emailRevealed)) {
@@ -128,10 +142,32 @@ export async function searchProspeo(query: LeadSearchQuery): Promise<ProviderRes
               companyName = enrichData?.company?.name || companyName;
               domain = cleanDomain(enrichData?.company?.domain || domain);
               linkedinUrl = enrichData?.person?.linkedin_url || linkedinUrl;
+              phone = phoneFromPerson(enrichData) || phone;
             }
           }
         } catch (enrichErr) {
           console.warn("Prospeo enrich error for person:", personId, enrichErr);
+        }
+      }
+
+      // Paid mobile reveal (develop2, Sazzad's direction 2026-11-27: the
+      // lead finder should also bring phone numbers for the call agent).
+      // A verified mobile costs 10 Prospeo credits (email is 1), so this
+      // runs ONLY when PROSPEO_REVEAL_MOBILE=true in .env — with it off,
+      // discovery costs exactly what it cost before.
+      if (!phone && personId && process.env.PROSPEO_REVEAL_MOBILE === "true") {
+        try {
+          const mobRes = await fetch("https://api.prospeo.io/enrich-person", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-KEY": apiKey },
+            body: JSON.stringify({ data: { person_id: personId } }),
+          });
+          if (mobRes.ok) {
+            const mobData: any = await mobRes.json();
+            phone = phoneFromPerson(mobData) || phone;
+          }
+        } catch (mobErr) {
+          console.warn("Prospeo mobile reveal error for person:", personId, mobErr);
         }
       }
 
@@ -146,6 +182,7 @@ export async function searchProspeo(query: LeadSearchQuery): Promise<ProviderRes
         contactName: name,
         contactEmail: String(email).toLowerCase(),
         contactTitle: jobTitle,
+        phone,
         linkedinUrl,
         source: "PROSPEO" as const,
         sourceUrl: linkedinUrl,

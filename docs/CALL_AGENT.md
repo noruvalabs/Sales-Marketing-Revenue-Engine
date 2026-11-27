@@ -1,23 +1,42 @@
 # AI Call Agent — TEST build (branch: develop2)
 
-An AI caller for **warm Noruva AI leads only** — people who replied to our
-emails or signed up for the free sessions. It introduces itself as an AI,
-answers questions from one fixed script + FAQ, and tries to book the
-15-minute meeting. Every call's transcript, summary and outcome are saved
-in the dashboard **Calls** tab.
+An AI caller for **Noruva AI leads**. The same lead finder that finds
+emails now also brings phone numbers, and the call agent calls those
+leads to introduce the project, answer questions from one fixed script
++ FAQ, and book the 15-minute meeting. Every call's transcript, summary
+and outcome are saved in the dashboard **Calls** tab.
 
 > This lives ONLY on `develop2`, for testing. `develop` does not have it
 > and stays clean for deployment. Nothing here calls anyone until the
 > Retell keys are added AND `CALL_AGENT_ENABLED=true` is set.
 
+## How phone numbers arrive (no extra system)
+
+- **Web Hunter (free):** when it crawls a company's own website, it now
+  also saves a phone number the company **published itself** (a `tel:`
+  link or a visible international-format number) — same honesty rule as
+  emails, never guessed.
+- **Prospeo (paid, off by default):** set `PROSPEO_REVEAL_MOBILE=true`
+  in `.env` and discovery also reveals each lead's verified mobile.
+  **Cost warning:** a mobile reveal is **10 credits** (an email is 1),
+  so a lead with a phone costs ~11 credits. The free plan's ~80 credits
+  buy only ~7 such leads; Starter's 2,000 credits buy ~180.
+- **By hand:** warm leads who replied but have no number show in the
+  Calls tab with a one-click "Reveal phone" button (10 credits each).
+
 ## Safety rules built into the code
 
-- **Warm leads only.** The queue accepts only contacts whose status is
-  `REPLIED_INTERESTED` or `REPLIED_OBJECTION`. Cold contacts are refused
-  by the server, not just hidden in the UI. (US law treats an AI sales
-  call to a mobile phone as a robocall — it needs prior consent.)
-- **Suppression is checked twice** — when a lead is queued and again at
-  the moment the call starts. Opted-out contacts can never be called.
+- **Who can be called:** any saved lead with a phone number (Sazzad's
+  direction, 2026-11-27 — the first build was warm-only). Two hard
+  blocks always apply: **opted-out contacts are never called**, and
+  anyone on the **Suppression List** (email or company domain) is
+  refused — checked when a lead is queued AND again at the moment the
+  call starts.
+- **Known legal risk, stated plainly:** US law treats an AI-voice sales
+  call to a **mobile phone** as a robocall and may require prior
+  consent; business/landline numbers are lower risk. The script always
+  discloses it is an AI, honours "stop / don't call" instantly, and
+  every call is started by a human click — there is no bulk dialler.
 - **Honest simulation.** Without Retell keys (or with calling switched
   off), "Call now" writes a clearly-marked *Simulated — no real call*
   record. It never pretends a call happened.
@@ -77,9 +96,10 @@ in the dashboard **Calls** tab.
    ($39/$78/$117)? Does it offer the booking link?
 2. **Fix the script** if it says anything wrong — edit
    `src/lib/calling/script.ts` and paste the new prompt into Retell.
-3. **Then 10 warm leads.** In the Calls tab: Reveal phone → Add to call
-   queue → Call now. Call only in the lead's local business hours
-   (9 AM–5 PM their time).
+3. **Then 10 real leads.** Run a hunt (with `PROSPEO_REVEAL_MOBILE=true`
+   if you want Prospeo mobiles, or let the Web Hunter bring published
+   numbers free). In the Calls tab: Add to call queue → Call now. Call
+   only in the lead's local business hours (9 AM–5 PM their time).
 4. **Review** every recording/transcript in "Call results" before
    deciding whether this is worth scaling.
 

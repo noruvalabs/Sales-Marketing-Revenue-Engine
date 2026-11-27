@@ -5,18 +5,32 @@ import { getCallAgentConfig } from "@/lib/calling/retell";
 
 /**
  * AI Call Agent (develop2, TEST ONLY) — the Calls tab data:
- *   config:   is Retell connected? is calling switched on?
- *   eligible: warm leads (replied to our emails) — with/without a phone
- *   queue:    calls waiting to be started
- *   history:  calls started/finished, newest first (simulated rows are
- *             clearly marked and are NOT real calls)
+ *   config:    is Retell connected? is calling switched on?
+ *   callable:  saved leads WITH a phone number (brought by the hunter —
+ *              Prospeo reveal or published on the company website),
+ *              excluding opted-out contacts
+ *   needPhone: warm leads (replied to our emails) with no number yet —
+ *              one click reveals the mobile via Prospeo (10 credits)
+ *   queue:     calls waiting to be started
+ *   history:   calls started/finished, newest first (simulated rows are
+ *              clearly marked and are NOT real calls)
  */
 export async function GET() {
   try {
     const config = getCallAgentConfig();
 
-    const warmContacts = await prisma.contact.findMany({
-      where: { status: { in: ["REPLIED_INTERESTED", "REPLIED_OBJECTION"] } },
+    const callableContacts = await prisma.contact.findMany({
+      where: { phone: { not: null }, status: { not: "OPTED_OUT" } },
+      include: { company: true },
+      orderBy: { updatedAt: "desc" },
+      take: 200,
+    });
+
+    const warmNoPhone = await prisma.contact.findMany({
+      where: {
+        phone: null,
+        status: { in: ["REPLIED_INTERESTED", "REPLIED_OBJECTION"] },
+      },
       include: { company: true },
       orderBy: { updatedAt: "desc" },
       take: 200,
@@ -67,7 +81,8 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       config,
-      eligible: warmContacts.map(shapeContact),
+      callable: callableContacts.map(shapeContact),
+      needPhone: warmNoPhone.map(shapeContact),
       queue: logs.filter((l: any) => l.status === "QUEUED" || l.status === "CALLING").map(shapeLog),
       history: logs.filter((l: any) => l.status !== "QUEUED" && l.status !== "CALLING").map(shapeLog),
       queuedContactIds: Array.from(queuedContactIds),
