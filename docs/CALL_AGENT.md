@@ -10,6 +10,30 @@ and outcome are saved in the dashboard **Calls** tab.
 > and stays clean for deployment. Nothing here calls anyone until the
 > Retell keys are added AND `CALL_AGENT_ENABLED=true` is set.
 
+## Free testing — hear the agent talk, $0 (do this first)
+
+You do NOT need leads, phone numbers or keys to judge the agent's voice:
+
+1. Create a **free Retell account** at retellai.com — new accounts get
+   **$10 credit, no card required**.
+2. Create an agent and paste the prompt from
+   `src/lib/calling/script.ts` (see Setup step 3 below).
+3. Click **Test** in the Retell dashboard → **web call** → allow the
+   microphone and **talk to the agent in your browser**. This is free
+   and unlimited on a draft agent — ask it the price question, try to
+   confuse it, say "stop calling me", and see how it behaves.
+4. Happy with how it talks? Then do the full Setup below (number + keys)
+   and use the **"Call my number"** box in the Calls tab for a real
+   phone test — the minutes come out of the same $10 free credit
+   (~100 minutes of talk).
+
+Checked against the alternatives (Nov 2026): Vapi gives only $5 credit
+and its free number is **inbound-only** (it cannot call your phone
+without a paid carrier number), so Retell is the better free test.
+There is no permanently-free platform for real outbound phone calls —
+free always means trial credit; the browser web-call is the one truly
+$0, no-card test.
+
 ## How phone numbers arrive (no extra system)
 
 - **Web Hunter (free):** when it crawls a company's own website, it now
@@ -90,7 +114,8 @@ and outcome are saved in the dashboard **Calls** tab.
 
 ## Test plan
 
-1. **Your own phone first.** Calls tab → "Test on your own phone" →
+1. **Talk to it free in the browser first** (see "Free testing" above).
+   Then **your own phone**: Calls tab → "Test on your own phone" →
    enter your number → "Call my number". Listen: does it introduce
    itself as an AI? Does it answer the price question correctly
    ($39/$78/$117)? Does it offer the booking link?

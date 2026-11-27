@@ -1657,7 +1657,9 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
               <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-5 py-3 text-xs text-amber-300">
                 Retell is not connected yet — missing in .env: {callsData.config.missing.join(", ") || "—"}.
                 Until then, “Call now” creates a <b>simulated test record only</b> — no real call is made.
-                Setup steps: docs/CALL_AGENT.md.
+                Setup steps: docs/CALL_AGENT.md. <b>Free first test:</b> a Retell account is free ($10 credit,
+                no card) and its browser web-call test is free — you can talk to the agent today without
+                any keys here.
               </div>
             ) : !callsData.config.enabled ? (
               <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-5 py-3 text-xs text-amber-300">
@@ -1670,25 +1672,36 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
               </div>
             )}
 
-            {/* Test call to your own number */}
-            <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl px-5 py-4 flex flex-wrap items-center gap-3">
-              <span className="text-sm font-bold text-white flex items-center space-x-2">
-                <Phone className="w-4 h-4 text-[#34d399]" />
-                <span>Test on your own phone</span>
-              </span>
-              <input
-                value={testPhone}
-                onChange={(e) => setTestPhone(e.target.value)}
-                placeholder="+1... your number with country code"
-                className="flex-1 min-w-[220px] bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder:text-slate-500"
-              />
-              <button
-                disabled={callBusy === "test" || !testPhone.trim()}
-                onClick={() => callAction("test", "/api/calls/test", { phone: testPhone.trim() }, "Test call started")}
-                className="text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold px-4 py-2 rounded-lg"
-              >
-                {callBusy === "test" ? "Calling..." : "Call my number"}
-              </button>
+            {/* Test the agent: free browser talk, or a real call to your number */}
+            <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl px-5 py-4 space-y-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-sm font-bold text-white flex items-center space-x-2">
+                  <Phone className="w-4 h-4 text-[#34d399]" />
+                  <span>Test on your own phone</span>
+                </span>
+                <input
+                  value={testPhone}
+                  onChange={(e) => setTestPhone(e.target.value)}
+                  placeholder="+880... your number with country code"
+                  className="flex-1 min-w-[220px] bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder:text-slate-500"
+                />
+                <button
+                  disabled={callBusy === "test" || !testPhone.trim()}
+                  onClick={() => callAction("test", "/api/calls/test", { phone: testPhone.trim() }, "Test call started")}
+                  className="text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold px-4 py-2 rounded-lg"
+                >
+                  {callBusy === "test" ? "Calling..." : "Call my number"}
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                <b className="text-slate-200">Free option — talk in your browser, $0:</b> create a free Retell
+                account (you get $10 credit, no card), create the agent with the script from
+                docs/CALL_AGENT.md, then click <b>Test</b> in the Retell dashboard and talk to it with your
+                microphone. No phone number and no keys here are needed for that test.{" "}
+                <a href="https://dashboard.retellai.com" target="_blank" rel="noreferrer" className="text-sky-400 underline">
+                  Open Retell dashboard
+                </a>
+              </p>
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
