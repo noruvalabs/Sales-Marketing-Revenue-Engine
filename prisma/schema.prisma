@@ -49,6 +49,15 @@ enum Sentiment {
   NEUTRAL
 }
 
+enum CallStatus {
+  QUEUED
+  CALLING
+  COMPLETED
+  NO_ANSWER
+  FAILED
+  SKIPPED
+}
+
 enum DealStage {
   QUALIFIED_LEAD
   CONTACTED
@@ -105,10 +114,16 @@ model Contact {
   emailVerification String       @default("UNKNOWN")
   emailVerifiedAt   DateTime?
   status         ContactStatus   @default(NEW)
-  
+
+  // AI Call Agent (develop2, test only): mobile number revealed via Prospeo
+  // (10 credits per reveal) or added by hand. Null = no number known yet.
+  phone          String?
+  phoneSource    String?
+
   // Relations
   outreachDrafts OutreachDraft[]
   conversations  Conversation[]
+  callLogs       CallLog[]
   
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
@@ -156,6 +171,31 @@ model Conversation {
   rawText        String       @db.Text
   
   createdAt      DateTime     @default(now())
+}
+
+// AI Call Agent (develop2, test only): one row per queued/placed call.
+// A row with simulated=true is a TEST record only — no real call happened.
+// Real rows get their transcript/summary filled by the Retell webhook.
+model CallLog {
+  id             String     @id @default(uuid())
+  contactId      String
+  contact        Contact    @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  phone          String
+  status         CallStatus @default(QUEUED)
+  retellCallId   String?
+  simulated      Boolean    @default(false)
+  durationSec    Int?
+  outcome        String?    // MEETING_BOOKED | INTERESTED | NOT_INTERESTED | CALLBACK | NO_ANSWER | OTHER
+  summary        String?    @db.Text
+  transcript     String?    @db.Text
+  recordingUrl   String?
+  errorMessage   String?
+
+  startedAt      DateTime?
+  endedAt        DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
 }
 
 model Deal {

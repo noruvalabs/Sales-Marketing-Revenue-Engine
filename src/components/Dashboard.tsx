@@ -45,12 +45,14 @@ import {
   Terminal,
   Pencil,
   Save,
+  PhoneCall,
+  Phone,
 } from "lucide-react";
 
 export default function Dashboard() {
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    "overview" | "autopilot" | "discovery" | "approvals" | "outbox" | "conversations" | "pipeline" | "suppression"
+    "overview" | "autopilot" | "discovery" | "approvals" | "outbox" | "calls" | "conversations" | "pipeline" | "suppression"
   >("overview");
   const [discoveryMode, setDiscoveryMode] = useState<"auto" | "csv" | "manual">("auto");
   const [companies, setCompanies] = useState<any[]>([]);
@@ -174,6 +176,64 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
     }
   };
 
+  // AI Call Agent (develop2, TEST ONLY): warm leads only — people who
+  // replied to our emails. Queue -> start one call -> results land here.
+  const [callsData, setCallsData] = useState<{
+    config: { enabled: boolean; configured: boolean; missing: string[] };
+    eligible: any[];
+    queue: any[];
+    history: any[];
+    queuedContactIds: string[];
+  }>({
+    config: { enabled: false, configured: false, missing: [] },
+    eligible: [],
+    queue: [],
+    history: [],
+    queuedContactIds: [],
+  });
+  const [callBusy, setCallBusy] = useState<string | null>(null);
+  const [testPhone, setTestPhone] = useState("");
+
+  const fetchCalls = async () => {
+    try {
+      const res = await fetch("/api/calls");
+      const data = await res.json();
+      if (data.success) {
+        setCallsData({
+          config: data.config,
+          eligible: data.eligible || [],
+          queue: data.queue || [],
+          history: data.history || [],
+          queuedContactIds: data.queuedContactIds || [],
+        });
+      }
+    } catch (err) {
+      console.error("Failed to load calls", err);
+    }
+  };
+
+  const callAction = async (key: string, url: string, body: any, okText: string) => {
+    setCallBusy(key);
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDispatchMessage({ text: data.message || okText, type: "success" });
+      } else {
+        setDispatchMessage({ text: data.error || "Action failed", type: "error" });
+      }
+    } catch (err) {
+      setDispatchMessage({ text: "Action failed — network error", type: "error" });
+    } finally {
+      setCallBusy(null);
+      fetchCalls();
+    }
+  };
+
   const fetchSuppressionList = async () => {
     try {
       const res = await fetch("/api/suppression");
@@ -230,6 +290,7 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
     fetchRevenue();
     fetchAutopilot();
     fetchOutbox();
+    fetchCalls();
   }, []);
 
   // Keep the cap editor showing the saved value whenever config reloads.
@@ -640,6 +701,12 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
             label: "Outbox",
             icon: Send,
             badge: outbox.queue.length > 0 ? outbox.queue.length : undefined,
+          },
+          {
+            id: "calls",
+            label: "Calls",
+            icon: PhoneCall,
+            badge: callsData.queue.length > 0 ? callsData.queue.length : undefined,
           },
           {
             id: "conversations",
@@ -1554,6 +1621,227 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
                     ))}
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "calls" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center space-x-2">
+                  <PhoneCall className="w-5 h-5 text-[#34d399]" />
+                  <span>AI Call Agent — TEST (develop2)</span>
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Warm leads only: people who replied to our emails. The AI introduces itself as an AI,
+                  uses one fixed script, and can only book the 15-minute meeting.
+                </p>
+              </div>
+              <button
+                onClick={fetchCalls}
+                className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-full border border-slate-700"
+              >
+                Refresh
+              </button>
+            </div>
+
+            {/* Status banner: honest about whether real calls can happen */}
+            {!callsData.config.configured ? (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-5 py-3 text-xs text-amber-300">
+                Retell is not connected yet — missing in .env: {callsData.config.missing.join(", ") || "—"}.
+                Until then, “Call now” creates a <b>simulated test record only</b> — no real call is made.
+                Setup steps: docs/CALL_AGENT.md.
+              </div>
+            ) : !callsData.config.enabled ? (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-5 py-3 text-xs text-amber-300">
+                Retell is connected, but real calls are switched OFF — set CALL_AGENT_ENABLED=true in .env to allow them.
+                “Call now” will only create simulated test records until then.
+              </div>
+            ) : (
+              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-5 py-3 text-xs text-emerald-300">
+                Retell connected and calling is ON. Calls below are real — test on your own number first.
+              </div>
+            )}
+
+            {/* Test call to your own number */}
+            <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl px-5 py-4 flex flex-wrap items-center gap-3">
+              <span className="text-sm font-bold text-white flex items-center space-x-2">
+                <Phone className="w-4 h-4 text-[#34d399]" />
+                <span>Test on your own phone</span>
+              </span>
+              <input
+                value={testPhone}
+                onChange={(e) => setTestPhone(e.target.value)}
+                placeholder="+1... your number with country code"
+                className="flex-1 min-w-[220px] bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder:text-slate-500"
+              />
+              <button
+                disabled={callBusy === "test" || !testPhone.trim()}
+                onClick={() => callAction("test", "/api/calls/test", { phone: testPhone.trim() }, "Test call started")}
+                className="text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold px-4 py-2 rounded-lg"
+              >
+                {callBusy === "test" ? "Calling..." : "Call my number"}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+              {/* Warm leads */}
+              <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl overflow-hidden">
+                <div className="px-5 py-3 border-b border-slate-800 flex items-center justify-between">
+                  <span className="text-sm font-bold text-white">Warm leads (replied)</span>
+                  <span className="text-xs bg-sky-500/10 text-sky-400 px-2.5 py-0.5 rounded-full border border-sky-500/20">
+                    {callsData.eligible.length} people
+                  </span>
+                </div>
+                {callsData.eligible.length === 0 ? (
+                  <p className="px-5 py-8 text-xs text-slate-400 text-center">
+                    No warm leads yet. When someone replies to an outreach email, they appear here.
+                  </p>
+                ) : (
+                  <div className="divide-y divide-slate-800/70">
+                    {callsData.eligible.map((c: any) => (
+                      <div key={c.id} className="px-5 py-3 space-y-1">
+                        <div className="flex items-center justify-between space-x-2">
+                          <span className="text-xs font-bold text-white truncate">
+                            {c.name} · {c.companyName}
+                          </span>
+                          <span className="text-[10px] font-bold uppercase tracking-wider bg-sky-500/15 text-sky-400 border border-sky-500/30 px-2 py-0.5 rounded whitespace-nowrap">
+                            {c.status === "REPLIED_INTERESTED" ? "Interested" : "Replied"}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 truncate">
+                          {c.email}
+                          {c.phone ? ` · ${c.phone}` : " · no phone number yet"}
+                        </div>
+                        <div className="flex space-x-2 pt-1">
+                          {!c.phone && (
+                            <button
+                              disabled={callBusy === `reveal-${c.id}`}
+                              onClick={() => callAction(`reveal-${c.id}`, "/api/calls/reveal-phone", { contactId: c.id }, "Phone number saved")}
+                              className="text-[11px] bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 px-3 py-1.5 rounded-full border border-slate-700"
+                            >
+                              {callBusy === `reveal-${c.id}` ? "Revealing..." : "Reveal phone (10 Prospeo credits)"}
+                            </button>
+                          )}
+                          {c.phone && !callsData.queuedContactIds.includes(c.id) && (
+                            <button
+                              disabled={callBusy === `queue-${c.id}`}
+                              onClick={() => callAction(`queue-${c.id}`, "/api/calls/queue", { contactId: c.id }, "Added to call queue")}
+                              className="text-[11px] bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold px-3 py-1.5 rounded-full"
+                            >
+                              Add to call queue
+                            </button>
+                          )}
+                          {c.phone && callsData.queuedContactIds.includes(c.id) && (
+                            <span className="text-[11px] text-amber-400">In queue below</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Queue + history */}
+              <div className="space-y-4">
+                <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl overflow-hidden">
+                  <div className="px-5 py-3 border-b border-slate-800 flex items-center justify-between">
+                    <span className="text-sm font-bold text-white">Call queue</span>
+                    <span className="text-xs bg-amber-500/10 text-amber-400 px-2.5 py-0.5 rounded-full border border-amber-500/20">
+                      {callsData.queue.length} waiting
+                    </span>
+                  </div>
+                  {callsData.queue.length === 0 ? (
+                    <p className="px-5 py-8 text-xs text-slate-400 text-center">
+                      Queue is empty. Add a warm lead with a phone number from the left list.
+                    </p>
+                  ) : (
+                    <div className="divide-y divide-slate-800/70">
+                      {callsData.queue.map((l: any) => (
+                        <div key={l.id} className="px-5 py-3 space-y-1">
+                          <div className="flex items-center justify-between space-x-2">
+                            <span className="text-xs font-bold text-white truncate">
+                              {l.contactName} · {l.companyName}
+                            </span>
+                            <span className="text-[10px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded whitespace-nowrap">
+                              {l.status}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-400">{l.phone}</div>
+                          {l.status === "QUEUED" && (
+                            <button
+                              disabled={callBusy === `start-${l.id}`}
+                              onClick={() => callAction(`start-${l.id}`, "/api/calls/start", { callLogId: l.id }, "Call started")}
+                              className="text-[11px] bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold px-3 py-1.5 rounded-full"
+                            >
+                              {callBusy === `start-${l.id}` ? "Starting..." : "Call now"}
+                            </button>
+                          )}
+                          {l.status === "CALLING" && (
+                            <span className="text-[11px] text-sky-400">Call in progress — result appears below when it ends.</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-[#0c1b2e] border border-slate-800 rounded-xl overflow-hidden">
+                  <div className="px-5 py-3 border-b border-slate-800 flex items-center justify-between">
+                    <span className="text-sm font-bold text-white">Call results</span>
+                    <span className="text-xs bg-slate-500/10 text-slate-300 px-2.5 py-0.5 rounded-full border border-slate-500/20">
+                      {callsData.history.length} calls
+                    </span>
+                  </div>
+                  {callsData.history.length === 0 ? (
+                    <p className="px-5 py-8 text-xs text-slate-400 text-center">
+                      No calls yet. Finished calls appear here with outcome, summary and transcript.
+                    </p>
+                  ) : (
+                    <div className="divide-y divide-slate-800/70">
+                      {callsData.history.map((l: any) => (
+                        <div key={l.id} className="px-5 py-3 space-y-1">
+                          <div className="flex items-center justify-between space-x-2">
+                            <span className="text-xs font-bold text-white truncate">
+                              {l.contactName} · {l.companyName}
+                            </span>
+                            {l.simulated ? (
+                              <span className="text-[10px] font-bold uppercase tracking-wider bg-slate-500/15 text-slate-300 border border-slate-500/30 px-2 py-0.5 rounded whitespace-nowrap">
+                                Simulated — no real call
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded whitespace-nowrap">
+                                {l.outcome || l.status}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-slate-400">
+                            {l.phone}
+                            {l.durationSec ? ` · ${Math.floor(l.durationSec / 60)}m ${l.durationSec % 60}s` : ""}
+                            {l.endedAt
+                              ? ` · ${new Date(l.endedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`
+                              : ""}
+                          </div>
+                          {l.summary && <div className="text-[11px] text-slate-300">{l.summary}</div>}
+                          {l.errorMessage && <div className="text-[11px] text-rose-400">{l.errorMessage}</div>}
+                          {l.recordingUrl && (
+                            <a href={l.recordingUrl} target="_blank" rel="noreferrer" className="text-[11px] text-sky-400 underline">
+                              Listen to recording
+                            </a>
+                          )}
+                          {l.transcript && (
+                            <details className="text-[11px] text-slate-400">
+                              <summary className="cursor-pointer text-slate-300">Transcript</summary>
+                              <pre className="whitespace-pre-wrap mt-1 max-h-48 overflow-y-auto">{l.transcript}</pre>
+                            </details>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
