@@ -17,6 +17,19 @@ import { getCallAgentConfig } from "@/lib/calling/retell";
  */
 export async function GET() {
   try {
+    // If the Prisma client was generated before develop2, it has no
+    // CallLog model — say exactly how to fix it instead of crashing
+    // with a confusing undefined error.
+    if (!callLogDb) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Database not updated for the call agent yet. Stop the app, run: npx prisma db push — then restart the app.",
+        },
+        { status: 500 }
+      );
+    }
     const config = getCallAgentConfig();
 
     const callableContacts = await prisma.contact.findMany({

@@ -259,6 +259,11 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
           history: data.history || [],
           queuedContactIds: data.queuedContactIds || [],
         });
+      } else if (data.error) {
+        // Surface the real reason (e.g. "run npx prisma db push")
+        // instead of silently showing the empty starting state, which
+        // looks like missing .env keys even when the keys are fine.
+        setDispatchMessage({ text: `Calls tab: ${data.error}`, type: "error" });
       }
     } catch (err) {
       console.error("Failed to load calls", err);
