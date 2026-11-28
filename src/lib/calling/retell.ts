@@ -13,6 +13,10 @@ export interface CallAgentConfig {
   enabled: boolean;
   configured: boolean;
   missing: string[];
+  /** Browser talk test: needs only the 2 free keys — NO phone number,
+   *  NO payment method. Minutes draw from Retell's $10 free credit. */
+  webReady: boolean;
+  webMissing: string[];
 }
 
 export function getCallAgentConfig(): CallAgentConfig {
@@ -20,11 +24,65 @@ export function getCallAgentConfig(): CallAgentConfig {
   if (!process.env.RETELL_API_KEY) missing.push("RETELL_API_KEY");
   if (!process.env.RETELL_AGENT_ID) missing.push("RETELL_AGENT_ID");
   if (!process.env.RETELL_FROM_NUMBER) missing.push("RETELL_FROM_NUMBER");
+  const webMissing: string[] = [];
+  if (!process.env.RETELL_API_KEY) webMissing.push("RETELL_API_KEY");
+  if (!process.env.RETELL_AGENT_ID) webMissing.push("RETELL_AGENT_ID");
   return {
     enabled: process.env.CALL_AGENT_ENABLED === "true",
     configured: missing.length === 0,
     missing,
+    webReady: webMissing.length === 0,
+    webMissing,
   };
+}
+
+export interface WebCallResult {
+  accessToken?: string;
+  callId?: string;
+  error?: string;
+}
+
+/**
+ * Create a Retell WEB call — the agent talks to you in the browser.
+ * This is the no-payment test path: no phone number is bought, no card
+ * is needed; it needs only the free account's API key + agent id, and
+ * the minutes come out of the $10 free credit.
+ */
+export async function createWebCall(input: {
+  firstName: string;
+  companyName: string;
+}): Promise<WebCallResult> {
+  const apiKey = process.env.RETELL_API_KEY;
+  const agentId = process.env.RETELL_AGENT_ID;
+  if (!apiKey || !agentId) {
+    return { error: "Add RETELL_API_KEY and RETELL_AGENT_ID to .env first (both free — see docs/CALL_AGENT.md)" };
+  }
+  try {
+    const res = await fetch("https://api.retellai.com/v2/create-web-call", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        agent_id: agentId,
+        retell_llm_dynamic_variables: {
+          first_name: input.firstName || "there",
+          company_name: input.companyName || "",
+        },
+        metadata: { source: "sales-engine-develop2-webtest" },
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return { error: `Retell HTTP ${res.status}: ${text.slice(0, 300)}` };
+    }
+    const data: any = await res.json();
+    if (!data?.access_token) return { error: "Retell replied without an access_token" };
+    return { accessToken: String(data.access_token), callId: data.call_id ? String(data.call_id) : undefined };
+  } catch (err: any) {
+    return { error: `Retell request failed: ${err?.message || String(err)}` };
+  }
 }
 
 export interface StartCallResult {

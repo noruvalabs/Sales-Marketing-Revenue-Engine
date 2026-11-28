@@ -34,6 +34,23 @@ There is no permanently-free platform for real outbound phone calls —
 free always means trial credit; the browser web-call is the one truly
 $0, no-card test.
 
+### Talk inside your own app — also free, no payment
+
+The Calls tab has a **"Talk to the agent here — free"** panel: the same
+agent, talking to you in the browser, inside your own app. It needs
+only the **2 free keys** in `.env` (no number, no card):
+
+```
+RETELL_API_KEY=<Retell dashboard -> Settings -> API Keys>
+RETELL_AGENT_ID=<your agent's page in Retell>
+```
+
+Restart the app, open the Calls tab, click **Start talking**, allow
+the microphone, and judge the conversation — a live transcript appears
+under the button. Minutes draw from the same $10 free credit.
+`RETELL_FROM_NUMBER` and `CALL_AGENT_ENABLED` are needed ONLY for real
+phone calls later.
+
 ## How phone numbers arrive (no extra system)
 
 - **Web Hunter (free):** when it crawls a company's own website, it now

@@ -179,14 +179,14 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
   // AI Call Agent (develop2, TEST ONLY): warm leads only — people who
   // replied to our emails. Queue -> start one call -> results land here.
   const [callsData, setCallsData] = useState<{
-    config: { enabled: boolean; configured: boolean; missing: string[] };
+    config: { enabled: boolean; configured: boolean; missing: string[]; webReady: boolean; webMissing: string[] };
     callable: any[];
     needPhone: any[];
     queue: any[];
     history: any[];
     queuedContactIds: string[];
   }>({
-    config: { enabled: false, configured: false, missing: [] },
+    config: { enabled: false, configured: false, missing: [], webReady: false, webMissing: [] },
     callable: [],
     needPhone: [],
     queue: [],
@@ -195,6 +195,56 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
   });
   const [callBusy, setCallBusy] = useState<string | null>(null);
   const [testPhone, setTestPhone] = useState("");
+
+  // Browser talk test (no payment, no phone number): Retell web call.
+  const [webTalk, setWebTalk] = useState<"idle" | "connecting" | "live" | "ended" | "error">("idle");
+  const [webTalkError, setWebTalkError] = useState("");
+  const [webTranscript, setWebTranscript] = useState<{ role: string; content: string }[]>([]);
+  const webClientRef = React.useRef<any>(null);
+
+  const startWebTalk = async () => {
+    setWebTalk("connecting");
+    setWebTalkError("");
+    setWebTranscript([]);
+    try {
+      const res = await fetch("/api/calls/webcall", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Could not start the talk test");
+      const mod: any = await import("retell-client-js-sdk");
+      const client = new mod.RetellWebClient();
+      webClientRef.current = client;
+      client.on("call_started", () => setWebTalk("live"));
+      client.on("call_ended", () => setWebTalk("ended"));
+      client.on("error", (e: any) => {
+        setWebTalk("error");
+        setWebTalkError(e?.message || "Web call error — check the microphone permission");
+      });
+      client.on("update", (update: any) => {
+        if (Array.isArray(update?.transcript)) {
+          setWebTranscript(
+            update.transcript
+              .filter((t: any) => t && t.content)
+              .map((t: any) => ({ role: t.role === "agent" ? "Agent" : "You", content: String(t.content) }))
+          );
+        }
+      });
+      await client.startCall({ accessToken: data.accessToken });
+    } catch (err: any) {
+      setWebTalk("error");
+      setWebTalkError(err?.message || "Could not start the talk test");
+    }
+  };
+
+  const endWebTalk = () => {
+    try {
+      webClientRef.current?.stopCall();
+    } catch { /* already ended */ }
+    setWebTalk("ended");
+  };
 
   const fetchCalls = async () => {
     try {
@@ -1702,6 +1752,50 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
                   Open Retell dashboard
                 </a>
               </p>
+
+              {/* Talk to the agent right here — no payment, no phone number.
+                  Needs only the 2 free Retell keys in .env. */}
+              <div className="border-t border-slate-800 pt-3 space-y-2">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-sm font-bold text-white">Talk to the agent here — free</span>
+                  {webTalk !== "live" && webTalk !== "connecting" ? (
+                    <button
+                      onClick={startWebTalk}
+                      disabled={!callsData.config.webReady}
+                      className="text-xs bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white font-bold px-4 py-2 rounded-lg"
+                    >
+                      Start talking
+                    </button>
+                  ) : (
+                    <button
+                      onClick={endWebTalk}
+                      className="text-xs bg-rose-600 hover:bg-rose-500 text-white font-bold px-4 py-2 rounded-lg"
+                    >
+                      End talk
+                    </button>
+                  )}
+                  {webTalk === "connecting" && <span className="text-[11px] text-amber-400">Connecting… allow the microphone if asked.</span>}
+                  {webTalk === "live" && <span className="text-[11px] text-emerald-400">● Live — speak now. The agent is listening.</span>}
+                  {webTalk === "ended" && <span className="text-[11px] text-slate-400">Talk ended. Start again any time — it is free to test.</span>}
+                </div>
+                {!callsData.config.webReady && (
+                  <p className="text-[11px] text-amber-300">
+                    To talk here, add the 2 free keys to .env and restart: missing{" "}
+                    {callsData.config.webMissing.join(", ") || "RETELL_API_KEY, RETELL_AGENT_ID"}.
+                    Both come from the free Retell account — no card, no number needed.
+                  </p>
+                )}
+                {webTalk === "error" && <p className="text-[11px] text-rose-400">{webTalkError}</p>}
+                {webTranscript.length > 0 && (
+                  <div className="bg-slate-900/60 border border-slate-800 rounded-lg px-4 py-3 max-h-56 overflow-y-auto space-y-1.5">
+                    {webTranscript.map((t, i) => (
+                      <p key={i} className="text-[11px] text-slate-300">
+                        <b className={t.role === "Agent" ? "text-sky-400" : "text-emerald-400"}>{t.role}:</b> {t.content}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
