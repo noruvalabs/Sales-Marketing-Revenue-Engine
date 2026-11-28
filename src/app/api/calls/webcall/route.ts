@@ -17,7 +17,13 @@ export async function POST(req: Request) {
     if (result.error || !result.accessToken) {
       return NextResponse.json({ success: false, error: result.error || "Could not start web call" }, { status: 400 });
     }
-    return NextResponse.json({ success: true, accessToken: result.accessToken, callId: result.callId });
+    return NextResponse.json({
+      success: true,
+      accessToken: result.accessToken,
+      callId: result.callId,
+      transport: result.transport,
+      iceServers: result.iceServers,
+    });
   } catch (error: any) {
     return NextResponse.json(
       { success: false, error: error?.message || "Failed to start web call" },

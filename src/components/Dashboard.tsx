@@ -232,7 +232,14 @@ Sample Ltd,sample.invalid,"Hiring 15 Technical Screeners",John Sample,john.sampl
           );
         }
       });
-      await client.startCall({ accessToken: data.accessToken });
+      // Retell v3 web calls: the browser SDK needs the connection
+      // details from the create reply, not just the access token.
+      await client.startCall({
+        accessToken: data.accessToken,
+        ...(data.callId ? { callId: data.callId } : {}),
+        ...(data.transport ? { transport: data.transport } : {}),
+        ...(data.iceServers ? { iceServers: data.iceServers } : {}),
+      });
     } catch (err: any) {
       setWebTalk("error");
       setWebTalkError(err?.message || "Could not start the talk test");

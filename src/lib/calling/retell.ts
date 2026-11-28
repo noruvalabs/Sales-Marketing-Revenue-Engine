@@ -39,6 +39,9 @@ export function getCallAgentConfig(): CallAgentConfig {
 export interface WebCallResult {
   accessToken?: string;
   callId?: string;
+  /** v3 web calls return connection details the browser SDK needs. */
+  transport?: string;
+  iceServers?: unknown;
   error?: string;
 }
 
@@ -58,7 +61,11 @@ export async function createWebCall(input: {
     return { error: "Add RETELL_API_KEY and RETELL_AGENT_ID to .env first (both free — see docs/CALL_AGENT.md)" };
   }
   try {
-    const res = await fetch("https://api.retellai.com/v2/create-web-call", {
+    // v3 endpoint: Retell retired /v2/create-web-call on 2026-10-18
+    // (HTTP 400 "Deprecated API usage"). Same JSON body; the reply now
+    // carries connection details (transport, ice_servers) that the
+    // browser SDK 3.x needs in startCall().
+    const res = await fetch("https://api.retellai.com/v3/create-web-call", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -79,7 +86,12 @@ export async function createWebCall(input: {
     }
     const data: any = await res.json();
     if (!data?.access_token) return { error: "Retell replied without an access_token" };
-    return { accessToken: String(data.access_token), callId: data.call_id ? String(data.call_id) : undefined };
+    return {
+      accessToken: String(data.access_token),
+      callId: data.call_id ? String(data.call_id) : undefined,
+      transport: data.transport ? String(data.transport) : undefined,
+      iceServers: data.ice_servers,
+    };
   } catch (err: any) {
     return { error: `Retell request failed: ${err?.message || String(err)}` };
   }
